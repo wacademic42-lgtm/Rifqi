@@ -6,4 +6,6 @@
   .catalog-toolbar { flex-wrap: wrap; }
   .catalog-search { flex: 1 1 100%; width: 100%; }
   .catalog-toolbar select { width: 100%; height: 48px; }
+  .loan-row { align-items: flex-start; flex-wrap: wrap; }
+  .loan-row .return-button { margin-left: 51px; }
 }

@@ -1,0 +1,26 @@
+{
+  "summary": "Regression testing passed for homepage, search, authenticated borrowing, return, stock-zero reservation, and mobile overflow. Production frontend build also passed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "Google Apps Script Web App", "issue": "Not deployed/configured in the frontend environment; real Sheets/Drive persistence, server authentication, stock mutation, and concurrent FIFO behavior remain unvalidated."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Apps Script integration", "issue": "REACT_APP_APPS_SCRIPT_URL is unset, so gasRequest returns null and all tested member activity uses local React state (MOCKED).", "affected_selectors": ["[data-testid=login-submit-button]", "[data-testid=return-loan-0]", "[data-testid=reservation-list]"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_4.json"],
+  "action_items": ["Deploy/configure the Google Apps Script /exec URL and retest catalog, auth, loan persistence, stock updates, and FIFO concurrency against Sheets/Drive.", "Keep authenticated borrow flow explicitly reopening book detail after login if the intended UX is to continue the interrupted borrow; current behavior correctly closes both modals but does not automatically resume borrowing."],
+  "critical_code_review_comments": ["The visible catalog sync badge claims Google Sheets synchronization even when the Apps Script URL is absent and local hardcoded catalog/state is used; consider exposing an explicit mock/offline state."],
+  "updated_files": ["/app/test_reports/iteration_4.json"],
+  "success_rate": {"backend": "not run (Apps Script unavailable)", "frontend": "100% of executed flows"},
+  "seed_data_creation": "None; only built-in local demo seed loan was used.",
+  "retest_needed": true,
+  "should_call_test_agent_after_fix": true,
+  "context_for_next_testing_agent": "Desktop and mobile UI regression passed. Login uses demo@unesa.ac.id / demo123 and is MOCKED. After unauthenticated borrow/login, the detail modal closes; reopen a book to complete authenticated borrow. Real Apps Script behavior is still untested.",
+  "rca of the issue": "The configured frontend environment has no REACT_APP_APPS_SCRIPT_URL, and gasRequest intentionally returns null in that case. Therefore borrow/return/reserve state is only in-memory React state and cannot verify persistence or server-side business rules."
+}

@@ -1,0 +1,29 @@
+{
+  "summary": "Frontend production build passed. Clean UI testing reached search/filter and exposed a modal overlay blocker after login; return/reservation/admin completion was blocked by that issue. Apps Script endpoint remains unconfigured and therefore MOCKED local state was used.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "Google Apps Script loan_", "issue": "Loans schema declares 7 columns but loan_ appends only 5 values; return action appends a new RETURNED row instead of updating the active loan and sends a title as bookId from the React adapter."},
+      {"endpoint": "Google Apps Script reserve_", "issue": "FIFO position is computed by read-then-append without locking, so concurrent reservations can receive duplicate positions; queue positions are not renumbered after cancellation (no cancellation action currently exists)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "BookDetail/LoginModal", "issue": "When an unauthenticated user opens a book, clicks borrow, logs in, the login modal closes but the book-detail modal remains open. The backdrop intercepts clicks on the profile chip/navigation, blocking the requested return flow.", "selector": "[data-testid=book-detail-modal]", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Apps Script persistence", "issue": "REACT_APP_APPS_SCRIPT_URL is not configured, so gasRequest returns null and catalog/auth/loan/reservation persistence cannot be validated; UI is MOCKED/local.", "affected_selectors": ["[data-testid=login-submit-button]", "[data-testid=return-loan-0]", "[data-testid=reservation-list]"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_3.json"],
+  "action_items": ["Close the book-detail modal when login succeeds (or reopen detail only after authentication) so profile navigation is not blocked.", "Align Apps Script Loans writes with the declared schema and implement return as an update of the active loan using a stable book ID.", "Configure and deploy the Apps Script URL, then retest real persistence and FIFO concurrency."],
+  "critical_code_review_comments": ["The login callback only closes LoginModal; selected book state remains set, leaving a fixed modal backdrop over the authenticated app."],
+  "updated_files": ["/app/test_reports/iteration_3.json"],
+  "success_rate": {"backend": "not run", "frontend": "40%"},
+  "seed_data_creation": "None; only local demo state was exercised.",
+  "retest_needed": true,
+  "should_call_test_agent_after_fix": true,
+  "context_for_next_testing_agent": "Build passed; search and category filter passed. Reproduce by open book -> borrow -> login; detail backdrop remains and intercepts profile click. Close it manually to continue remaining flows after fix.",
+  "rca of the issue": "App.js renders BookDetail whenever selected is non-null. The login success callback sets loggedIn and closes only showLogin; it never calls setSelected(null). Because BookDetail renders modal-backdrop with z-index 50, it intercepts header clicks after authentication."
+}

@@ -15,6 +15,7 @@ function route_(params, action) {
   if (action === 'login') return login_(params.email, params.password);
   if (action === 'borrow') return loan_(params, 'borrow');
   if (action === 'return') return loan_(params, 'return');
+  if (action === 'reserve') return reserve_(params);
   if (action === 'members') return { ok: true, data: readSheet_('Members') };
   if (action === 'loans') return { ok: true, data: readSheet_('Loans') };
   if (action === 'addBook') return appendRow_('Books', params.book);
@@ -32,8 +33,37 @@ function login_(email, password) {
 }
 function loan_(params, mode) {
   const sheet = SpreadsheetApp.openById(CONFIG.spreadsheetId).getSheetByName('Loans');
-  sheet.appendRow([Utilities.getUuid(), params.memberId, params.bookId, new Date(), mode === 'borrow' ? 'ACTIVE' : 'RETURNED']);
+  if (mode === 'return') {
+    const rows = sheet.getDataRange().getValues();
+    for (let i = rows.length - 1; i > 0; i--) {
+      if (String(rows[i][1]) === String(params.memberId) && String(rows[i][2]) === String(params.bookId) && String(rows[i][6]) === 'ACTIVE') {
+        sheet.getRange(i + 1, 6).setValue(new Date());
+        sheet.getRange(i + 1, 7).setValue('RETURNED');
+        return { ok: true, message: 'Buku berhasil dikembalikan' };
+      }
+    }
+    return { ok: false, error: 'Peminjaman aktif tidak ditemukan' };
+  }
+  const borrowed = new Date();
+  const due = new Date(borrowed.getTime() + 14 * 24 * 60 * 60 * 1000);
+  sheet.appendRow([Utilities.getUuid(), params.memberId, params.bookId, borrowed, due, '', 'ACTIVE']);
   return { ok: true, message: mode === 'borrow' ? 'Buku berhasil dipinjam' : 'Buku berhasil dikembalikan' };
+}
+function reserve_(params) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+  const sheet = SpreadsheetApp.openById(CONFIG.spreadsheetId).getSheetByName('Reservations');
+  const queue = readSheet_('Reservations').filter(row => String(row.bookId) === String(params.bookId) && String(row.status) === 'WAITING').length + 1;
+  sheet.appendRow([Utilities.getUuid(), params.memberId, params.bookId, new Date(), queue, 'WAITING']);
+  return { ok: true, position: queue, message: 'Berhasil masuk antrean reservasi' };
+  } finally { lock.releaseLock(); }
+}
+function setupLibrary() {
+  const book = SpreadsheetApp.openById(CONFIG.spreadsheetId);
+  const schemas = { Books: ['id','title','author','type','category','year','stock','coverUrl','pdfUrl'], Members: ['id','name','email','password','role','joinedAt'], Loans: ['id','memberId','bookId','borrowedAt','dueAt','returnedAt','status'], Reservations: ['id','memberId','bookId','requestedAt','queuePosition','status'] };
+  Object.keys(schemas).forEach(name => { let sheet = book.getSheetByName(name) || book.insertSheet(name); if (sheet.getLastRow() === 0) sheet.appendRow(schemas[name]); });
+  return 'Library sheets ready';
 }
 function appendRow_(name, item) { SpreadsheetApp.openById(CONFIG.spreadsheetId).getSheetByName(name).appendRow(Object.values(item)); return { ok: true }; }
 function json_(data) { return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON); }
@@ -41,4 +71,5 @@ function json_(data) { return ContentService.createTextOutput(JSON.stringify(dat
 // Header row examples:
 // Books: id,title,author,type,category,year,stock,coverUrl,pdfUrl
 // Members: id,name,email,password,role,joinedAt
-// Loans: id,memberId,bookId,borrowedAt,status
+// Loans: id,memberId,bookId,borrowedAt,dueAt,returnedAt,status
+// Reservations: id,memberId,bookId,requestedAt,queuePosition,status

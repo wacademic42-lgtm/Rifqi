@@ -10,9 +10,10 @@ Responsive React client sebagai portal katalog dan panel anggota/admin. Google A
 - Beranda katalog dengan pencarian, topik populer, koleksi pilihan, statistik, dan CTA anggota.
 - Katalog responsif dengan filter kategori, detail koleksi, status ketersediaan, dan modal peminjaman.
 - Login anggota/admin demo, profil anggota, peminjaman aktif, dan panel admin katalog.
-- Template `google-apps-script/Code.gs` beserta skema sheet dan instruksi setup.
+- Pengembalian peminjaman, antrean reservasi FIFO, dan adapter request Apps Script opsional.
+- Template `google-apps-script/Code.gs` beserta `setupLibrary()` untuk membuat skema Sheet dan instruksi setup.
 
 ## Backlog
-- P0: Sambungkan URL Web App Apps Script dan validasi role di server.
-- P1: Tambahkan upload Drive, pengembalian, reservasi antrean, dan edit katalog admin.
+- P0: Deploy Apps Script, isi `REACT_APP_APPS_SCRIPT_URL`, lalu validasi role dan persistence nyata.
+- P1: Tambahkan upload Drive dan edit katalog admin.
 - P2: Tambahkan notifikasi email jatuh tempo dan statistik peminjaman per fakultas.
