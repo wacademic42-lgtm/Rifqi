@@ -1,0 +1,46 @@
+{
+  "project_name": "DigiLib Unesa Digital Repository & Library System",
+  "app_type": "hybrid_fullstack",
+  "theme": "light",
+  "emotional_tone": "academic, prestigious, scholarly, accessible, efficient",
+  "typography": {
+    "heading_font": "Playfair Display, serif",
+    "body_font": "Plus Jakarta Sans, sans-serif",
+    "mono_font": "JetBrains Mono, monospace"
+  },
+  "colors": {
+    "primary": "#1E3A8A",
+    "primary_hover": "#172554",
+    "secondary": "#D97706",
+    "background": "#F8FAFC",
+    "surface": "#FFFFFF",
+    "card_border": "#E2E8F0",
+    "text_main": "#0F172A",
+    "text_muted": "#64748B",
+    "accent_green": "#059669",
+    "accent_blue": "#0284C7"
+  },
+  "image_urls": [
+    {
+      "category": "hero_library",
+      "description": "Modern digital library interior with tall bookshelves and study desks",
+      "url": "https://images.unsplash.com/photo-1564910443496-5fd2d76b47fa?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDB8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBkaWdpdGFsJTIwbGlicmFyeSUyMGJvb2tzJTIwc3R1ZHklMjBhY2FkZW1pYyUyMHVuaXZlcnNpdHklMjBsaWJyYXJ5fGVufDB8fHx8MTc4ODE1ODIwNnww&ixlib=rb-4.1.0&q=85"
+    },
+    {
+      "category": "university_logo",
+      "description": "Academic university shield symbol or signage",
+      "url": "https://images.unsplash.com/photo-1669555632741-31cf41105a34?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzh8MHwxfHNlYXJjaHwxfHx1bml2ZXJzaXR5JTIwbG9nbyUyMGFjYWRlbWljJTIwc2hpZWxkJTIwc3ltYm9sfGVufDB8fHx8MTc4ODE1ODIwOXww&ixlib=rb-4.1.0&q=85"
+    }
+  ],
+  "key_functionalities": [
+    "Catalog browsing with advanced search and multi-faculty filters",
+    "Google Sheets & Google Apps Script sync status dashboard and backend management",
+    "Member authentication & role-based access (Member vs Admin)",
+    "Book & Thesis detail view with dual abstract (ID/EN) and simulated PDF/Manuscript viewer",
+    "Borrowing/reservation workflow with due date tracking",
+    "Member profile & loan history management",
+    "Comprehensive Admin Panel for managing catalog, members, and transactions"
+  ],
+  "component_path": "/app/frontend/src/components/",
+  "instructions_to_main_agent": "Build a fully responsive e-library portal mirroring digilib.unesa.ac.id with Google Apps Script & Google Sheets integration layer simulation, member portal, catalog search, book detail with PDF/abstract viewer, borrowing workflow, and admin management dashboard. Ensure all interactive elements include appropriate data-testid attributes and adhere to E1 design principles."
+}

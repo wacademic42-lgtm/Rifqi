@@ -1,0 +1,9 @@
+@media (max-width: 800px) {
+  html, body { overflow-x: hidden; }
+  .hero-art:before { inset: 0; }
+  .hero-stat { left: 10px; }
+  .stats-strip div { width: auto; }
+  .catalog-toolbar { flex-wrap: wrap; }
+  .catalog-search { flex: 1 1 100%; width: 100%; }
+  .catalog-toolbar select { width: 100%; height: 48px; }
+}
