@@ -33,6 +33,11 @@ Bangun e-perpustakaan seperti https://digilib.unesa.ac.id/front. User awalnya mi
 - Seed: admin, demo member, 15 buku
 - **Testing**: 18/18 pytest pass, 100% Playwright pass
 
+### Iteration 5 (Jan 2026) — Cloudinary aktif
+- Kredensial Cloudinary (`yr6hnben`) diisi ke `backend/.env`
+- Verifikasi end-to-end: signature endpoint valid, upload gambar berhasil (`secure_url` mengisi form otomatis)
+- Admin sekarang bisa upload cover (image) & PDF (raw) langsung dari BookEditor tanpa deploy ulang
+
 ### Iteration 4 (Jan 2026)
 - **Rekomendasi Baca**: bagian "Koleksi terkait / Rekomendasi untuk Anda" di modal detail buku
   - Backend `GET /api/books/{id}/related?limit=N` dengan strategi berbobot:
