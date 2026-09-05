@@ -43,6 +43,14 @@ export const api = {
   deleteMember: (id) => client.delete(`/admin/members/${id}`).then((r) => r.data),
   adminLoans: () => client.get("/admin/loans").then((r) => r.data),
   stats: () => client.get("/admin/stats").then((r) => r.data),
+
+  // Password reset
+  forgotPassword: (email) => client.post("/auth/forgot-password", { email }).then((r) => r.data),
+  resetPassword: (token, new_password) => client.post("/auth/reset-password", { token, new_password }).then((r) => r.data),
+
+  // Cloudinary
+  cloudinarySignature: (resource_type = "image", folder = "digilib/covers") =>
+    client.get("/cloudinary/signature", { params: { resource_type, folder } }).then((r) => r.data),
 };
 
 export default api;

@@ -4,6 +4,7 @@ import "@/responsive.css";
 import {
   BookOpen, CalendarDays, ChevronRight, CircleUserRound, Clock3, FileText, Grid2X2,
   LogIn, Menu, Search, ShieldCheck, Sparkles, Users, X, Trash2, Pencil, PlusCircle,
+  Upload, Eye, KeyRound,
 } from "lucide-react";
 import api, { formatError } from "@/lib/api";
 
@@ -20,10 +21,23 @@ function App() {
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
+  const [pdfBook, setPdfBook] = useState(null);
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState("login");
+  const [resetToken, setResetToken] = useState(null);
   const [mobileNav, setMobileNav] = useState(false);
   const [toast, setToast] = useState(null);
+
+  // Detect ?reset=TOKEN in URL on load
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const t = params.get("reset");
+    if (t) {
+      setResetToken(t);
+      setAuthMode("reset");
+      setShowAuth(true);
+    }
+  }, []);
 
   const notify = useCallback((msg, kind = "info") => {
     setToast({ msg, kind });
@@ -156,12 +170,22 @@ function App() {
         book={selected}
         onClose={() => setSelected(null)}
         onBorrow={() => handleBorrow(selected)}
+        onRead={() => { setPdfBook(selected); setSelected(null); }}
         loggedIn={!!user}
       />}
 
+      {pdfBook && <PdfViewer book={pdfBook} onClose={() => setPdfBook(null)} />}
+
       {showAuth && <AuthModal
         mode={authMode} setMode={setAuthMode}
-        onClose={() => setShowAuth(false)}
+        resetToken={resetToken}
+        onClose={() => {
+          setShowAuth(false);
+          if (resetToken) {
+            setResetToken(null);
+            window.history.replaceState({}, "", window.location.pathname);
+          }
+        }}
         onSuccess={handleAuthSuccess}
         notify={notify}
       />}
@@ -442,7 +466,8 @@ function BookCard({ book, onOpen }) {
   );
 }
 
-function BookDetail({ book, onClose, onBorrow, loggedIn }) {
+function BookDetail({ book, onClose, onBorrow, onRead, loggedIn }) {
+  const hasPdf = !!book.pdf_url;
   return (
     <div className="modal-backdrop" data-testid="book-detail-modal">
       <div className="detail-modal">
@@ -460,31 +485,97 @@ function BookDetail({ book, onClose, onBorrow, loggedIn }) {
             </span>
           </div>
           <p className="abstract">{book.description || "Buku ini menghadirkan pembahasan terstruktur dan kontekstual untuk mendukung proses belajar, penelitian, dan pengembangan wawasan pembaca."}</p>
-          <button className="primary-button" data-testid="borrow-book-button" onClick={onBorrow}>
-            {book.stock === 0 ? "Masuk antrean reservasi" : loggedIn ? "Pinjam koleksi" : "Masuk untuk meminjam"}
-            <ChevronRight size={17} />
-          </button>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button className="primary-button" data-testid="borrow-book-button" onClick={onBorrow}>
+              {book.stock === 0 ? "Masuk antrean reservasi" : loggedIn ? "Pinjam koleksi" : "Masuk untuk meminjam"}
+              <ChevronRight size={17} />
+            </button>
+            {hasPdf && (
+              <button
+                className="primary-button"
+                data-testid="read-online-button"
+                onClick={onRead}
+                style={{ background: "#fff", color: "var(--blue)", border: "1px solid var(--blue)" }}
+              >
+                <Eye size={16} /> Baca online
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
+function PdfViewer({ book, onClose }) {
+  const gviewUrl = `https://docs.google.com/gview?url=${encodeURIComponent(book.pdf_url)}&embedded=true`;
+  return (
+    <div className="modal-backdrop" data-testid="pdf-viewer-modal" style={{ padding: 0 }}>
+      <div style={{
+        background: "#fff", width: "min(1100px, 95vw)", height: "92vh",
+        borderRadius: 8, display: "flex", flexDirection: "column", overflow: "hidden",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid var(--line)" }}>
+          <div>
+            <strong style={{ fontSize: 14 }}>{book.title}</strong>
+            <span style={{ fontSize: 11, color: "var(--muted)", display: "block", marginTop: 3 }}>{book.author} · {book.type}</span>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <a
+              href={book.pdf_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="pdf-open-new-tab"
+              style={{ fontSize: 11, color: "var(--blue)", textDecoration: "none", padding: "8px 12px", border: "1px solid var(--blue)", borderRadius: 4 }}
+            >Buka di tab baru</a>
+            <button data-testid="pdf-viewer-close" onClick={onClose} style={{ border: 0, background: "none", cursor: "pointer", color: "var(--muted)" }}>
+              <X />
+            </button>
+          </div>
+        </div>
+        <iframe
+          data-testid="pdf-viewer-iframe"
+          src={gviewUrl}
+          title={book.title}
+          style={{ flex: 1, border: 0, width: "100%" }}
+        />
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------ AUTH ------------------------------ */
-function AuthModal({ mode, setMode, onClose, onSuccess, notify }) {
+function AuthModal({ mode, setMode, resetToken, onClose, onSuccess, notify }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [name, setName] = useState("");
   const [faculty, setFaculty] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [info, setInfo] = useState("");
+  const [devLink, setDevLink] = useState("");
+
+  const clearMsgs = () => { setErr(""); setInfo(""); setDevLink(""); };
 
   const submit = async () => {
-    setBusy(true); setErr("");
+    setBusy(true); clearMsgs();
     try {
-      if (mode === "login") await api.login(email, password);
-      else await api.register({ name, email, password, faculty });
-      await onSuccess();
+      if (mode === "login") {
+        await api.login(email, password);
+        await onSuccess();
+      } else if (mode === "register") {
+        await api.register({ name, email, password, faculty });
+        await onSuccess();
+      } else if (mode === "forgot") {
+        const res = await api.forgotPassword(email);
+        setInfo(res.message || "Cek email Anda untuk tautan reset.");
+        if (res.dev_link) setDevLink(res.dev_link);
+      } else if (mode === "reset") {
+        const res = await api.resetPassword(resetToken, newPassword);
+        setInfo(res.message || "Kata sandi diperbarui.");
+        setTimeout(() => { setMode("login"); clearMsgs(); }, 1500);
+      }
     } catch (e) {
       setErr(formatError(e));
     } finally {
@@ -492,14 +583,29 @@ function AuthModal({ mode, setMode, onClose, onSuccess, notify }) {
     }
   };
 
+  const switchTo = (next) => (e) => {
+    e.preventDefault();
+    clearMsgs();
+    setMode(next);
+  };
+
+  const titles = {
+    login: ["AKSES ANGGOTA", "Selamat datang kembali", "Masuk untuk meminjam koleksi dan mengelola aktivitas bacaan."],
+    register: ["DAFTAR ANGGOTA", "Bergabung dengan DigiLib", "Buat akun untuk mulai meminjam koleksi digital."],
+    forgot: ["LUPA KATA SANDI", "Reset kata sandi", "Masukkan email Anda. Kami akan mengirim tautan reset (berlaku 1 jam)."],
+    reset: ["KATA SANDI BARU", "Buat kata sandi baru", "Silakan pilih kata sandi baru untuk akun Anda."],
+  };
+  const [kicker, title, desc] = titles[mode] || titles.login;
+  const Icon = mode === "forgot" || mode === "reset" ? KeyRound : ShieldCheck;
+
   return (
     <div className="modal-backdrop" data-testid="auth-modal">
       <div className="login-modal">
         <button className="modal-close" data-testid="auth-close-button" onClick={onClose}><X /></button>
-        <div className="login-icon"><ShieldCheck size={25} /></div>
-        <span className="section-kicker">{mode === "login" ? "AKSES ANGGOTA" : "DAFTAR ANGGOTA"}</span>
-        <h2>{mode === "login" ? "Selamat datang kembali" : "Bergabung dengan DigiLib"}</h2>
-        <p>{mode === "login" ? "Masuk untuk meminjam koleksi dan mengelola aktivitas bacaan." : "Buat akun untuk mulai meminjam koleksi digital."}</p>
+        <div className="login-icon"><Icon size={25} /></div>
+        <span className="section-kicker">{kicker}</span>
+        <h2>{title}</h2>
+        <p>{desc}</p>
 
         {mode === "register" && (
           <>
@@ -511,27 +617,55 @@ function AuthModal({ mode, setMode, onClose, onSuccess, notify }) {
             </label>
           </>
         )}
-        <label>Email
-          <input data-testid={`${mode}-email-input`} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nama@digilib.ac.id" />
-        </label>
-        <label>Kata sandi
-          <input data-testid={`${mode}-password-input`} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Minimal 6 karakter" />
-        </label>
+
+        {(mode === "login" || mode === "register" || mode === "forgot") && (
+          <label>Email
+            <input data-testid={`${mode}-email-input`} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nama@digilib.ac.id" />
+          </label>
+        )}
+
+        {(mode === "login" || mode === "register") && (
+          <label>Kata sandi
+            <input data-testid={`${mode}-password-input`} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Minimal 6 karakter" />
+          </label>
+        )}
+
+        {mode === "reset" && (
+          <label>Kata sandi baru
+            <input data-testid="reset-password-input" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Minimal 6 karakter" />
+          </label>
+        )}
 
         {err && <div data-testid="auth-error" style={{ color: "#c2410c", fontSize: 11, marginTop: 12 }}>{err}</div>}
+        {info && <div data-testid="auth-info" style={{ color: "#059669", fontSize: 11, marginTop: 12 }}>{info}</div>}
+        {devLink && (
+          <div data-testid="auth-dev-link" style={{ marginTop: 10, padding: 12, background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 4, fontSize: 10, wordBreak: "break-all" }}>
+            <strong style={{ display: "block", color: "#c2410c", marginBottom: 6 }}>Mode demo — buka tautan berikut:</strong>
+            <a href={devLink} style={{ color: "#1e3a8a" }}>{devLink}</a>
+          </div>
+        )}
 
         <button className="primary-button full" data-testid={`${mode}-submit-button`} disabled={busy} onClick={submit}>
-          {busy ? "Memproses..." : mode === "login" ? "Masuk ke DigiLib" : "Buat akun & masuk"}
+          {busy ? "Memproses..." : mode === "login" ? "Masuk ke DigiLib"
+            : mode === "register" ? "Buat akun & masuk"
+            : mode === "forgot" ? "Kirim tautan reset"
+            : "Simpan kata sandi baru"}
           <ChevronRight size={17} />
         </button>
+
         <small>
-          {mode === "login" ? (
-            <>Belum punya akun? <a href="#" data-testid="switch-to-register" onClick={(e) => { e.preventDefault(); setMode("register"); setErr(""); }}>Daftar</a></>
-          ) : (
-            <>Sudah punya akun? <a href="#" data-testid="switch-to-login" onClick={(e) => { e.preventDefault(); setMode("login"); setErr(""); }}>Masuk</a></>
-          )}
+          {mode === "login" && <>
+            <a href="#" data-testid="switch-to-forgot" onClick={switchTo("forgot")}>Lupa kata sandi?</a>
+            {" · "}
+            Belum punya akun? <a href="#" data-testid="switch-to-register" onClick={switchTo("register")}>Daftar</a>
+          </>}
+          {mode === "register" && <>Sudah punya akun? <a href="#" data-testid="switch-to-login" onClick={switchTo("login")}>Masuk</a></>}
+          {mode === "forgot" && <>Ingat kata sandi? <a href="#" data-testid="switch-to-login" onClick={switchTo("login")}>Kembali masuk</a></>}
+          {mode === "reset" && <a href="#" data-testid="switch-to-login" onClick={switchTo("login")}>Kembali ke halaman masuk</a>}
         </small>
-        <small style={{ marginTop: 8, opacity: 0.7 }}>Demo: admin@digilib.ac.id / admin123 · andi@digilib.ac.id / member123</small>
+        {(mode === "login" || mode === "register") && (
+          <small style={{ marginTop: 8, opacity: 0.7 }}>Demo: admin@digilib.ac.id / admin123 · andi@digilib.ac.id / member123</small>
+        )}
       </div>
     </div>
   );
@@ -722,12 +856,44 @@ function BookEditor({ initial, onSave, onClose }) {
     year: initial.year || String(new Date().getFullYear()),
     stock: initial.stock ?? 1,
     cover_url: initial.cover_url || "",
+    pdf_url: initial.pdf_url || "",
     description: initial.description || "",
     featured: !!initial.featured,
   });
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState({ cover: false, pdf: false });
+  const [uploadErr, setUploadErr] = useState("");
 
   const change = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const uploadToCloudinary = async (file, kind) => {
+    // kind: "cover" (image) or "pdf" (raw)
+    setUploadErr("");
+    setUploading((u) => ({ ...u, [kind]: true }));
+    try {
+      const resource_type = kind === "cover" ? "image" : "raw";
+      const folder = kind === "cover" ? "digilib/covers" : "digilib/pdfs";
+      const sig = await api.cloudinarySignature(resource_type, folder);
+      const body = new FormData();
+      body.append("file", file);
+      body.append("api_key", sig.api_key);
+      body.append("timestamp", sig.timestamp);
+      body.append("signature", sig.signature);
+      body.append("folder", sig.folder);
+      const res = await fetch(
+        `https://api.cloudinary.com/v1_1/${sig.cloud_name}/${resource_type}/upload`,
+        { method: "POST", body }
+      );
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message || "Upload gagal");
+      const url = data.secure_url;
+      change(kind === "cover" ? "cover_url" : "pdf_url", url);
+    } catch (e) {
+      setUploadErr(formatError(e) || e.message || "Upload gagal");
+    } finally {
+      setUploading((u) => ({ ...u, [kind]: false }));
+    }
+  };
 
   const submit = async () => {
     setBusy(true);
@@ -735,9 +901,15 @@ function BookEditor({ initial, onSave, onClose }) {
     setBusy(false);
   };
 
+  const btnStyle = {
+    display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 12px",
+    background: "#eff6ff", color: "var(--blue)", border: 0, borderRadius: 4,
+    cursor: "pointer", fontSize: 11, fontWeight: 700, marginTop: 6,
+  };
+
   return (
     <div className="modal-backdrop" data-testid="book-editor-modal">
-      <div className="login-modal" style={{ maxWidth: 500 }}>
+      <div className="login-modal" style={{ maxWidth: 520, maxHeight: "92vh", overflowY: "auto" }}>
         <button className="modal-close" data-testid="book-editor-close" onClick={onClose}><X /></button>
         <div className="login-icon"><PlusCircle size={25} /></div>
         <span className="section-kicker">{form.id ? "EDIT KOLEKSI" : "TAMBAH KOLEKSI"}</span>
@@ -762,7 +934,41 @@ function BookEditor({ initial, onSave, onClose }) {
           <label>Tahun<input data-testid="book-year-input" value={form.year} onChange={(e) => change("year", e.target.value)} /></label>
           <label>Stok<input data-testid="book-stock-input" type="number" min="0" value={form.stock} onChange={(e) => change("stock", e.target.value)} /></label>
         </div>
-        <label>URL Sampul<input data-testid="book-cover-input" value={form.cover_url} onChange={(e) => change("cover_url", e.target.value)} placeholder="https://..." /></label>
+
+        <label>URL Sampul
+          <input data-testid="book-cover-input" value={form.cover_url} onChange={(e) => change("cover_url", e.target.value)} placeholder="https://... atau upload di bawah" />
+        </label>
+        <label style={btnStyle} data-testid="upload-cover-button">
+          <Upload size={13} /> {uploading.cover ? "Mengunggah..." : "Upload sampul"}
+          <input
+            type="file"
+            accept="image/*"
+            data-testid="upload-cover-input"
+            onChange={(e) => e.target.files?.[0] && uploadToCloudinary(e.target.files[0], "cover")}
+            style={{ display: "none" }}
+          />
+        </label>
+
+        <label style={{ marginTop: 15 }}>URL PDF (opsional)
+          <input data-testid="book-pdf-input" value={form.pdf_url} onChange={(e) => change("pdf_url", e.target.value)} placeholder="https://... atau upload di bawah" />
+        </label>
+        <label style={btnStyle} data-testid="upload-pdf-button">
+          <Upload size={13} /> {uploading.pdf ? "Mengunggah..." : "Upload PDF"}
+          <input
+            type="file"
+            accept="application/pdf"
+            data-testid="upload-pdf-input"
+            onChange={(e) => e.target.files?.[0] && uploadToCloudinary(e.target.files[0], "pdf")}
+            style={{ display: "none" }}
+          />
+        </label>
+
+        {uploadErr && (
+          <div data-testid="upload-error" style={{ color: "#c2410c", fontSize: 11, marginTop: 10 }}>
+            {uploadErr}
+          </div>
+        )}
+
         <label>Deskripsi
           <textarea
             data-testid="book-description-input"

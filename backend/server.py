@@ -15,6 +15,8 @@ from typing import Optional, List, Literal
 
 import bcrypt
 import jwt
+import asyncio
+import resend
 import cloudinary
 import cloudinary.utils
 from bson import ObjectId
@@ -44,6 +46,11 @@ cloudinary.config(
     api_secret=os.environ.get("CLOUDINARY_API_SECRET") or None,
     secure=True,
 )
+
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
+if RESEND_API_KEY:
+    resend.api_key = RESEND_API_KEY
 
 app = FastAPI(title="DigiLib API")
 api = APIRouter(prefix="/api")
@@ -190,6 +197,15 @@ class MemberUpdate(BaseModel):
     role: Optional[Literal["admin", "member"]] = None
 
 
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordIn(BaseModel):
+    token: str
+    new_password: str = Field(min_length=6)
+
+
 # ---------------------------------------------------------------------------
 # Auth endpoints
 # ---------------------------------------------------------------------------
@@ -259,6 +275,85 @@ async def refresh_token(request: Request, response: Response):
         return {"access_token": access}
     except jwt.PyJWTError:
         raise HTTPException(401, "Refresh token invalid")
+
+
+# ---------------------------------------------------------------------------
+# Password reset
+# ---------------------------------------------------------------------------
+async def _send_reset_email(email: str, name: str, reset_link: str) -> bool:
+    """Send reset email via Resend. Returns True if actually sent, False if fallback (console)."""
+    if not RESEND_API_KEY:
+        log.info("[PASSWORD RESET] %s -> %s", email, reset_link)
+        return False
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px;color:#10213f">
+      <h2 style="color:#1e3a8a;margin:0 0 8px">DigiLib · Reset Kata Sandi</h2>
+      <p>Halo {name or 'Anggota'},</p>
+      <p>Kami menerima permintaan reset kata sandi untuk akun Anda. Klik tombol di bawah untuk membuat kata sandi baru. Link berlaku 1 jam.</p>
+      <p style="margin:28px 0"><a href="{reset_link}" style="background:#1e3a8a;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;font-weight:700">Reset kata sandi</a></p>
+      <p style="font-size:12px;color:#718096">Jika tombol tidak berfungsi, salin URL berikut ke browser:<br><span style="color:#1e3a8a">{reset_link}</span></p>
+      <hr style="border:0;border-top:1px solid #e2e8f0;margin:24px 0">
+      <p style="font-size:11px;color:#98a4b5">Jika Anda tidak meminta reset, abaikan email ini. Sandi lama tetap aktif.</p>
+    </div>
+    """
+    try:
+        await asyncio.to_thread(resend.Emails.send, {
+            "from": SENDER_EMAIL,
+            "to": [email],
+            "subject": "DigiLib — Reset Kata Sandi",
+            "html": html,
+        })
+        return True
+    except Exception as e:
+        log.error("Resend send failed: %s", e)
+        log.info("[PASSWORD RESET FALLBACK] %s -> %s", email, reset_link)
+        return False
+
+
+@api.post("/auth/forgot-password")
+async def forgot_password(body: ForgotPasswordIn):
+    email = body.email.lower()
+    user = await db.users.find_one({"email": email})
+    # Always respond ok to avoid email enumeration; only send when user exists.
+    payload = {"ok": True, "message": "Jika email terdaftar, tautan reset telah dikirim."}
+    if not user:
+        return payload
+
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    await db.password_reset_tokens.insert_one({
+        "token": token,
+        "user_id": user["_id"],
+        "email": email,
+        "expires_at": expires_at,
+        "used": False,
+        "created_at": datetime.now(timezone.utc),
+    })
+    reset_link = f"{FRONTEND_URL}/?reset={token}"
+    sent = await _send_reset_email(email, user.get("name", ""), reset_link)
+    if not sent and not RESEND_API_KEY:
+        # Dev/demo mode — return link for UI to display
+        payload["dev_link"] = reset_link
+        payload["message"] = "Mode demo: tautan reset ditampilkan di bawah (email belum dikonfigurasi)."
+    return payload
+
+
+@api.post("/auth/reset-password")
+async def reset_password(body: ResetPasswordIn):
+    now = datetime.now(timezone.utc)
+    doc = await db.password_reset_tokens.find_one({"token": body.token})
+    if not doc:
+        raise HTTPException(400, "Tautan reset tidak valid")
+    if doc.get("used"):
+        raise HTTPException(400, "Tautan reset sudah digunakan")
+    exp = doc.get("expires_at")
+    if isinstance(exp, datetime) and exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp and exp < now:
+        raise HTTPException(400, "Tautan reset kedaluwarsa")
+    await db.users.update_one({"_id": doc["user_id"]}, {"$set": {"password_hash": hash_pw(body.new_password)}})
+    await db.password_reset_tokens.update_one({"_id": doc["_id"]}, {"$set": {"used": True, "used_at": now}})
+    return {"ok": True, "message": "Kata sandi berhasil diperbarui. Silakan masuk kembali."}
 
 
 # ---------------------------------------------------------------------------
@@ -660,7 +755,7 @@ SEED_BOOKS = [
     {"title": "Pengantar Ilmu Komunikasi", "author": "Yusuf Pratama", "type": "Buku", "category": "Sosial", "year": "2021", "stock": 0, "cover_url": "https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=800&q=85", "description": "Pengantar komprehensif untuk memahami dasar-dasar komunikasi manusia."},
     {"title": "Matematika Diskrit untuk Informatika", "author": "Prof. Hendra Wijaya", "type": "Buku", "category": "Teknologi", "year": "2023", "stock": 5, "cover_url": "https://images.unsplash.com/photo-1509228468518-180dd4864904?auto=format&fit=crop&w=800&q=85", "description": "Konsep matematika diskrit dan penerapannya dalam ilmu komputer."},
     {"title": "Sejarah Kebudayaan Nusantara", "author": "Siti Maryam", "type": "Buku", "category": "Sosial", "year": "2022", "stock": 3, "cover_url": "https://images.unsplash.com/photo-1461360370896-922624d12aa1?auto=format&fit=crop&w=800&q=85", "description": "Perjalanan panjang kebudayaan Nusantara dari masa ke masa."},
-    {"title": "Analisis Data dengan Python", "author": "Fajar Nugroho", "type": "E-Book", "category": "Teknologi", "year": "2024", "stock": 10, "cover_url": "https://images.unsplash.com/photo-1526379095098-d400fd0bf935?auto=format&fit=crop&w=800&q=85", "featured": True, "description": "Praktik langsung menganalisis data menggunakan pustaka Python populer."},
+    {"title": "Analisis Data dengan Python", "author": "Fajar Nugroho", "type": "E-Book", "category": "Teknologi", "year": "2024", "stock": 10, "cover_url": "https://images.unsplash.com/photo-1526379095098-d400fd0bf935?auto=format&fit=crop&w=800&q=85", "pdf_url": "https://pdfobject.com/pdf/sample.pdf", "featured": True, "description": "Praktik langsung menganalisis data menggunakan pustaka Python populer."},
     {"title": "Psikologi Pendidikan Modern", "author": "Dr. Lestari Widodo", "type": "Buku", "category": "Pendidikan", "year": "2023", "stock": 4, "cover_url": "https://images.unsplash.com/photo-1491841550275-ad7854e35ca6?auto=format&fit=crop&w=800&q=85", "description": "Menghadirkan pendekatan psikologi terkini untuk konteks pendidikan."},
     {"title": "Bahasa Indonesia untuk Perguruan Tinggi", "author": "Tim Dosen UNESA", "type": "Buku", "category": "Literasi", "year": "2021", "stock": 7, "cover_url": "https://images.unsplash.com/photo-1519682337058-a94d519337bc?auto=format&fit=crop&w=800&q=85", "description": "Panduan bahasa Indonesia baku untuk mahasiswa dan peneliti."},
     {"title": "Pengaruh Gawai terhadap Prestasi", "author": "Rahmat Hidayat", "type": "Tesis", "category": "Pendidikan", "year": "2023", "stock": 1, "cover_url": "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?auto=format&fit=crop&w=800&q=85", "description": "Tesis yang meneliti dampak penggunaan gawai terhadap prestasi akademik."},
@@ -675,6 +770,8 @@ async def seed_data():
     await db.books.create_index([("title", "text"), ("author", "text")])
     await db.loans.create_index([("user_id", 1), ("status", 1)])
     await db.reservations.create_index([("book_id", 1), ("status", 1), ("requested_at", 1)])
+    await db.password_reset_tokens.create_index("token", unique=True)
+    await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
 
     # Seed admin
     admin_email = os.environ["ADMIN_EMAIL"].lower()
@@ -712,9 +809,22 @@ async def seed_data():
 
     # Seed books
     if await db.books.count_documents({}) == 0:
-        docs = [{**b, "created_at": datetime.now(timezone.utc), "pdf_url": "", "description": b.get("description", "")} for b in SEED_BOOKS]
+        docs = [{**b, "created_at": datetime.now(timezone.utc), "pdf_url": b.get("pdf_url", ""), "description": b.get("description", "")} for b in SEED_BOOKS]
         await db.books.insert_many(docs)
         log.info("Seeded %d books", len(docs))
+
+    # Idempotent: ensure the "Analisis Data dengan Python" e-book has an iframe-friendly demo PDF
+    NEW_PDF = "https://pdfobject.com/pdf/sample.pdf"
+    OLD_PDFS = [
+        "",
+        None,
+        "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+        "https://africau.edu/images/default/sample.pdf",
+    ]
+    await db.books.update_one(
+        {"title": "Analisis Data dengan Python", "$or": [{"pdf_url": {"$in": OLD_PDFS}}, {"pdf_url": {"$exists": False}}]},
+        {"$set": {"pdf_url": NEW_PDF}},
+    )
 
 
 @app.on_event("startup")

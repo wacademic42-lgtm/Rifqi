@@ -7,62 +7,77 @@ Bangun e-perpustakaan seperti https://digilib.unesa.ac.id/front. User awalnya mi
 - Backend: FastAPI + MongoDB (native Emergent stack)
 - Autentikasi: JWT custom (email + password) dengan httpOnly cookies
 - Upload cover/PDF: Cloudinary (kredensial belum disetel — endpoint siap aktif)
-- Seed data: 15 buku dummy
+- Reset password: Resend email + fallback dev-link untuk demo
+- PDF viewer: iframe (menggunakan Google Docs Viewer wrapper untuk kompatibilitas)
+- Seed data: 15 buku dummy (1 buku dengan PDF demo)
 - Admin panel: Kelola buku, Kelola anggota, Statistik peminjaman, Kelola peminjaman
 
 ## Personas
-- **Anggota** (mahasiswa/dosen): jelajah katalog, pinjam buku, reservasi (FIFO), lihat riwayat
-- **Administrator**: kelola koleksi & anggota, monitor peminjaman, lihat statistik
+- **Anggota** (mahasiswa/dosen): jelajah katalog, pinjam buku, reservasi (FIFO), baca PDF online, lihat riwayat, reset password
+- **Administrator**: kelola koleksi (upload cover & PDF via Cloudinary), kelola anggota, monitor peminjaman, lihat statistik
 
 ## Core Requirements
 - Katalog terbuka + pencarian + filter kategori
-- Detail buku dalam modal
+- Detail buku dengan modal + tombol "Baca online" untuk buku ber-PDF
 - Register / login / logout dengan JWT
+- Lupa kata sandi + reset password lewat email (fallback dev-link untuk demo)
 - Peminjaman (14 hari) dan pengembalian
 - Reservasi antrean FIFO ketika stok habis; promosi otomatis saat buku kembali
-- Panel admin: CRUD buku, kelola anggota, daftar peminjaman, statistik
+- Panel admin: CRUD buku (dengan upload cover & PDF ke Cloudinary), kelola anggota, daftar peminjaman, statistik
 - Sink dengan MongoDB, siap deploy
 
-## Implemented (Jan 2026)
-- **Backend** (`/app/backend/server.py`)
-  - Auth JWT (register/login/logout/me/refresh) dengan bcrypt + httpOnly cookies SameSite=None
-  - Books: list, detail, kategori, admin CRUD
-  - Loans: borrow, return, my loans; stok terhitung otomatis
-  - Reservations FIFO + promosi + cancel + re-index queue
-  - Admin: members list/update/delete (bukan self), semua loans dengan info user+book, stats agregat
-  - Cloudinary signature endpoint (aktif otomatis saat env keys disetel)
-  - Seed: admin, demo member, 15 buku
-  - MongoDB indexes: users.email unique, books text index, loans compound, reservations compound
-- **Frontend** (`/app/frontend/src/App.js`, `/app/frontend/src/lib/api.js`)
-  - Home hero + featured + stats strip real-time
-  - Katalog dengan search debounce + category filter (server-side)
-  - Modal detail buku + tombol pinjam / masuk antrean
-  - Auth modal ganda (login/register) dengan error handling
-  - Profil: ringkasan, peminjaman aktif, riwayat, antrean reservasi (batalkan)
-  - Admin panel dengan 4 tab: Katalog (CRUD), Anggota, Peminjaman, Statistik (top books + per kategori)
-  - Toast notification + responsive mobile
+## Implemented
+### Iteration 1 (Jan 2026)
+- Backend FastAPI + MongoDB: auth JWT, books CRUD, loans, reservations FIFO, admin
+- Frontend React: home, catalog, profile, admin panel
+- Seed: admin, demo member, 15 buku
+- **Testing**: 18/18 pytest pass, 100% Playwright pass
+
+### Iteration 2 (Jan 2026)
+- **Cloudinary integration**: signature endpoint (image + raw/pdf), BookEditor upload buttons, graceful fallback ke input URL manual saat keys belum disetel
+- **Password reset flow**:
+  - `/api/auth/forgot-password` — kirim link via Resend, fallback ke console + dev_link untuk demo
+  - `/api/auth/reset-password` — verifikasi token, update password, invalidate token
+  - Frontend: modal AuthModal punya 4 mode (login/register/forgot/reset)
+  - Auto-detect `?reset=<token>` di URL untuk auto-open reset modal
+  - Anti email-enumeration: response sama untuk email yang tidak terdaftar
+  - TTL index pada `password_reset_tokens` collection
+- **PDF viewer inline**: modal iframe menggunakan Google Docs Viewer wrapper (kompatibel di semua browser), dengan "Buka di tab baru" sebagai fallback
+- **Testing**: 22/22 pytest pass, 100% frontend flows verified
 
 ## Test Results
-- Backend pytest: 18/18 pass
+- Backend pytest: 22/22 pass (`/app/backend/tests/test_digilib_api.py`)
 - Frontend Playwright: 100% pass
-- Report: `/app/test_reports/iteration_5.json`
-- Test file: `/app/backend/tests/test_digilib_api.py`
+- Latest report: `/app/test_reports/iteration_6.json`
 
 ## Credentials
 - Admin: `admin@digilib.ac.id` / `admin123`
 - Member: `andi@digilib.ac.id` / `member123`
 
+## Environment Variables
+- `MONGO_URL`, `DB_NAME` — MongoDB
+- `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` — Auth
+- `FRONTEND_URL` — untuk reset link
+- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` — upload (opsional)
+- `RESEND_API_KEY`, `SENDER_EMAIL` — email reset (opsional, fallback dev_link)
+
 ## Backlog (P0/P1/P2)
-- **P1**: Cloudinary keys dari user → upload cover & PDF asli via BookEditor
-- **P1**: Riwayat peminjaman → export PDF/CSV
-- **P2**: Notifikasi email tenggat via SendGrid/Resend
-- **P2**: Reset password lewat email
-- **P2**: Split `server.py` menjadi modul routers (`auth`, `books`, `loans`, `admin`)
-- **P2**: Rate limit login (5x/15 menit)
-- **P2**: Halaman baca PDF inline
+- **P1**: User isi kredensial Cloudinary → aktifkan upload cover & PDF asli
+- **P1**: User isi RESEND_API_KEY + verifikasi domain → email reset live
+- **P2**: Notifikasi email tenggat pinjam (H-3) via Resend
+- **P2**: Rate limit pada `/auth/login` dan `/auth/forgot-password`
+- **P2**: Halaman detail buku (route sendiri, bukan modal) untuk SEO
+- **P2**: Split `server.py` menjadi routers (`auth`, `books`, `loans`, `admin`)
+- **P2**: Riwayat peminjaman → export PDF/CSV
+- **P2**: Pagination pada katalog + admin list
 
 ## Architecture
 ```
-Frontend (React) ↔ FastAPI (/api/*) ↔ MongoDB (digilib_db)
-                                   ↘ Cloudinary (opsional)
+React (App.js + lib/api.js)
+    ↕  axios (withCredentials)
+FastAPI /api/*  (server.py)
+    ↕
+MongoDB (digilib_db)
+    ↘ Cloudinary (opsional, aktif jika keys diisi)
+    ↘ Resend email (opsional, fallback dev_link jika belum diset)
 ```

@@ -247,6 +247,70 @@ def test_admin_loans_and_stats(admin_client):
         assert k in body
 
 
+# ---------- PDF field ----------
+def test_pdf_url_on_python_book():
+    r = requests.get(f"{API}/books", params={"q": "Python"})
+    assert r.status_code == 200
+    hits = [b for b in r.json() if "Analisis Data dengan Python" in b["title"]]
+    assert hits, "Expected 'Analisis Data dengan Python' book in results"
+    assert hits[0].get("pdf_url"), "pdf_url should be non-empty"
+
+
+# ---------- Password reset ----------
+def test_forgot_password_unknown_email_no_dev_link():
+    r = requests.post(f"{API}/auth/forgot-password", json={"email": "nonexistent_xyz@example.com"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("ok") is True
+    assert "dev_link" not in body
+    assert "Jika email terdaftar" in body.get("message", "")
+
+
+def test_password_reset_full_flow():
+    # 1. Request reset for existing member — expect dev_link (demo mode)
+    r = requests.post(f"{API}/auth/forgot-password", json={"email": MEMBER["email"]})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body.get("ok") is True
+    assert "dev_link" in body, f"Expected dev_link in demo mode, got: {body}"
+    assert "Mode demo" in body.get("message", "")
+    dev_link = body["dev_link"]
+    assert "reset=" in dev_link
+    token = dev_link.split("reset=")[1]
+
+    new_pw = "newpass456"
+    try:
+        # 2. Reset with the token
+        rr = requests.post(f"{API}/auth/reset-password", json={"token": token, "new_password": new_pw})
+        assert rr.status_code == 200, rr.text
+        assert rr.json().get("ok") is True
+
+        # 3. Login with old password should fail
+        old_login = requests.post(f"{API}/auth/login", json=MEMBER)
+        assert old_login.status_code == 401
+
+        # 4. Login with new password should work
+        new_login = requests.post(f"{API}/auth/login", json={"email": MEMBER["email"], "password": new_pw})
+        assert new_login.status_code == 200, new_login.text
+
+        # 5. Reuse of same token -> 400 'sudah digunakan'
+        reuse = requests.post(f"{API}/auth/reset-password", json={"token": token, "new_password": "another123"})
+        assert reuse.status_code == 400
+        assert "sudah digunakan" in reuse.json().get("detail", "")
+    finally:
+        # Restore original password using a fresh reset token so subsequent tests / demo still work
+        r2 = requests.post(f"{API}/auth/forgot-password", json={"email": MEMBER["email"]})
+        tok2 = r2.json()["dev_link"].split("reset=")[1]
+        restore = requests.post(f"{API}/auth/reset-password", json={"token": tok2, "new_password": MEMBER["password"]})
+        assert restore.status_code == 200, f"Failed to restore member password: {restore.text}"
+
+
+def test_reset_password_invalid_token():
+    r = requests.post(f"{API}/auth/reset-password", json={"token": "invalid_random_token_xyz", "new_password": "whatever1"})
+    assert r.status_code == 400
+    assert "tidak valid" in r.json().get("detail", "")
+
+
 # ---------- Cloudinary signature ----------
 def test_cloudinary_signature_missing_config(admin_client):
     r = admin_client.get(f"{API}/cloudinary/signature")
