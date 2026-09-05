@@ -429,7 +429,7 @@ function ProfilePage({ user, onLogout, navigate, notify }) {
                     <strong>{loan.book?.title || "Buku"}</strong>
                     <span>Dikembalikan {fmtDate(loan.returned_at)} · Dipinjam {fmtDate(loan.borrowed_at)}</span>
                   </div>
-                  <span className="loan-status" style={{ background: "#eff6ff", color: "#1e3a8a" }}>Selesai</span>
+                  <span className="loan-status" style={{ background: "#ecfdf5", color: "#15843b" }}>Selesai</span>
                 </div>
               ))}
             </div>
@@ -444,7 +444,7 @@ function RequireAuth({ onOpen }) {
   return (
     <main className="page-main">
       <div className="empty-state" style={{ padding: 100 }} data-testid="require-auth-message">
-        <ShieldCheck size={40} style={{ color: "#1e3a8a", marginBottom: 12 }} />
+        <ShieldCheck size={40} style={{ color: "#15843b", marginBottom: 12 }} />
         <p style={{ fontSize: 15, marginBottom: 20 }}>Anda perlu masuk untuk melihat profil.</p>
         <button className="primary-button" data-testid="require-auth-login-button" onClick={onOpen}>Masuk</button>
       </div>
@@ -826,7 +826,7 @@ function AuthModal({ mode, setMode, resetToken, onClose, onSuccess, notify }) {
         {devLink && (
           <div data-testid="auth-dev-link" style={{ marginTop: 10, padding: 12, background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 4, fontSize: 10, wordBreak: "break-all" }}>
             <strong style={{ display: "block", color: "#c2410c", marginBottom: 6 }}>Mode demo — buka tautan berikut:</strong>
-            <a href={devLink} style={{ color: "#1e3a8a" }}>{devLink}</a>
+            <a href={devLink} style={{ color: "#15843b" }}>{devLink}</a>
           </div>
         )}
 
@@ -1088,7 +1088,7 @@ function BookEditor({ initial, onSave, onClose }) {
 
   const btnStyle = {
     display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 12px",
-    background: "#eff6ff", color: "var(--blue)", border: 0, borderRadius: 4,
+    background: "#ecfdf5", color: "var(--blue)", border: 0, borderRadius: 4,
     cursor: "pointer", fontSize: 11, fontWeight: 700, marginTop: 6,
   };
 

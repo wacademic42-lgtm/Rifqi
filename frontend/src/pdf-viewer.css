@@ -38,7 +38,7 @@
   font: 600 11px 'Plus Jakarta Sans', sans-serif;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-.pdf-controls button:hover:not(:disabled) { background: #eff6ff; color: var(--blue); border-color: #bfdbfe; }
+.pdf-controls button:hover:not(:disabled) { background: #ecfdf5; color: var(--blue); border-color: #bbf7d0; }
 .pdf-controls button:disabled { opacity: 0.4; cursor: not-allowed; }
 .pdf-controls .pdf-bookmarked {
   background: #fce8cc;
@@ -70,7 +70,7 @@
   border-radius: 4px;
   font-weight: 700;
 }
-.pdf-actions a:hover { background: #eff6ff; }
+.pdf-actions a:hover { background: #ecfdf5; }
 .pdf-close-btn { border: 0 !important; background: transparent !important; color: var(--muted) !important; padding: 6px !important; }
 
 .pdf-body {
