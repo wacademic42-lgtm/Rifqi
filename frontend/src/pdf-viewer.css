@@ -1,0 +1,134 @@
+/* PDF viewer styles */
+.pdf-modal { padding: 0; }
+.pdf-shell {
+  background: #f4f6fb;
+  width: min(1180px, 96vw);
+  height: 94vh;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 22px 70px rgba(16, 33, 63, 0.45);
+}
+
+.pdf-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 16px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.pdf-title { min-width: 220px; flex: 1; }
+.pdf-title strong { display: block; font-size: 14px; color: var(--ink); }
+.pdf-title span { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+.pdf-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pdf-controls button {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  padding: 7px 9px;
+  border-radius: 5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 11px 'Plus Jakarta Sans', sans-serif;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.pdf-controls button:hover:not(:disabled) { background: #eff6ff; color: var(--blue); border-color: #bfdbfe; }
+.pdf-controls button:disabled { opacity: 0.4; cursor: not-allowed; }
+.pdf-controls .pdf-bookmarked {
+  background: #fce8cc;
+  color: var(--orange);
+  border-color: #fed7aa;
+}
+.pdf-sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+
+.pdf-page-jump { display: inline-flex; align-items: center; gap: 6px; }
+.pdf-page-jump input {
+  width: 46px;
+  padding: 6px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font: 600 11px 'Plus Jakarta Sans', sans-serif;
+  text-align: center;
+  outline-color: var(--blue);
+}
+.pdf-page-jump span { font-size: 11px; color: var(--muted); }
+.pdf-zoom-label { font-size: 11px; font-weight: 700; color: var(--ink); min-width: 44px; text-align: center; }
+
+.pdf-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.pdf-actions a {
+  font-size: 11px;
+  color: var(--blue);
+  text-decoration: none;
+  padding: 8px 12px;
+  border: 1px solid var(--blue);
+  border-radius: 4px;
+  font-weight: 700;
+}
+.pdf-actions a:hover { background: #eff6ff; }
+.pdf-close-btn { border: 0 !important; background: transparent !important; color: var(--muted) !important; padding: 6px !important; }
+
+.pdf-body {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+  background: #e5e9f2;
+}
+.pdf-body .react-pdf__Document { display: flex; justify-content: center; }
+.pdf-body .react-pdf__Page {
+  box-shadow: 0 10px 30px rgba(16, 33, 63, 0.15);
+  background: #fff;
+}
+.pdf-body .react-pdf__Page__canvas { max-width: 100%; height: auto !important; }
+
+.pdf-loading, .pdf-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 60px 20px;
+}
+.pdf-error strong { color: var(--ink); font-size: 14px; }
+.pdf-error a { color: var(--blue); font-weight: 700; }
+
+.pdf-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 18px;
+  background: #fff;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--muted);
+}
+.pdf-jump-bookmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: #fce8cc;
+  color: var(--orange);
+  padding: 7px 12px;
+  border-radius: 4px;
+  font: 700 11px 'Plus Jakarta Sans', sans-serif;
+  cursor: pointer;
+}
+.pdf-jump-bookmark:hover { background: #fed7aa; }
+
+@media (max-width: 800px) {
+  .pdf-shell { width: 100vw; height: 100vh; border-radius: 0; }
+  .pdf-toolbar { padding: 10px; gap: 10px; }
+  .pdf-title { min-width: 100%; order: -1; }
+  .pdf-actions { margin-left: 0; }
+  .pdf-body { padding: 12px; }
+}

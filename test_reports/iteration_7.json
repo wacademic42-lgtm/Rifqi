@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 7 — Tested new react-pdf viewer + bookmark feature. Backend: added 6 bookmark tests to test_digilib_api.py; all 28 pytest tests pass (100%). Frontend: react-pdf renders correctly, zoom/page controls work as specified, bookmark save + toast + class change works, anonymous flow correctly shows 'Masuk untuk menyimpan bookmark' toast and does NOT hit API. Regression flows OK. ONE BUG FOUND: bookmark persistence across reopen is broken when saved page == 1 (button reverts to 'Bookmark' instead of 'Ditandai · hal. 1').",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "PdfViewer (App.js line 538)",
+        "issue": "On reopen, saved bookmark is only re-hydrated into `bookmarkPage` state when `data.page > 1`. When the user bookmarked page 1 (the only page in the demo PDF), reopening the viewer shows the button as 'Bookmark' with no `pdf-bookmarked` class, even though the backend correctly returns `{page: 1, updated_at: <iso>}`. Expected per spec: button should start as 'Ditandai · hal. 1' with class 'pdf-bookmarked'. Fix: move `setBookmarkPage(data.page)` outside the `data.page > 1` guard so it always reflects saved state; only the page-jump / jumpValue update should be guarded by `> 1`.",
+        "selector": "[data-testid=\"pdf-bookmark-toggle\"]",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_digilib_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Fix PdfViewer bookmark re-hydration for page == 1 (App.js ~line 538): always call setBookmarkPage(data.page) when data.page is truthy; keep the >1 guard only for the setPageNumber/setJumpValue call, e.g.:\n\n  if (data?.page) {\n    setBookmarkPage(data.page);\n    if (data.page > 1) { setPageNumber(data.page); setJumpValue(String(data.page)); }\n  }"
+  ],
+  "critical_code_review_comments": [
+    "PdfViewer auto-save effect (App.js ~L549) fires an immediate PUT once numPages loads even if user hasn't navigated — this bookmarks page 1 automatically the first time an authenticated user opens any PDF. Consider guarding with a `hasUserNavigated` flag or only saving when pageNumber changes from initial value. Currently causes an unintended bookmark row on first visit.",
+    "server.py bookmark endpoint uses ObjectId(book_id) — good; returns 404 for malformed ids. Consider also validating that the book actually exists (currently upserts even for a valid-looking but non-existent ObjectId).",
+    "BookmarkIn only validates `page: int >= 1`. No upper bound — a malicious client could store an arbitrary huge int. Consider `Field(ge=1, le=100000)` or validating against actual numPages when known.",
+    "server.py still 870 lines — split into routers/modules recommended.",
+    "isBookmarked comparison uses `bookmarkPage === pageNumber`; combined with the persistence bug above, once fixed the semantics work but consider explicit typing (both are numbers)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_digilib_api.py (added 6 bookmark tests: auth-required, default-on-first-access, put-then-get-persists, invalid-page 422, invalid-book-id 404, isolation-between-users)"
+  ],
+  "success_rate": {"backend": "100% (28/28)", "frontend": "~90% — 1 bug (bookmark reopen at page 1)"},
+  "test_credentials": "Admin: admin@digilib.ac.id/admin123. Member: andi@digilib.ac.id/member123 — RESTORED to member123 by the pytest reset-password teardown fixture (verified).",
+  "seed_data_creation": "Bookmarks in DB: after tests, andi's bookmark on Python book left at page=1; admin's on Python book at page=1 (both reset by tests). No orphaned TEST_ data.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend fully passing (28/28) — the pdf viewer & bookmark endpoints work correctly. The only frontend issue is the state re-hydration bug in PdfViewer (~L538) — trivial 3-line fix. After main-agent fix, retest: (a) login as andi, open Python book, click pdf-bookmark-toggle at page 1, close, reopen -> button should show 'Ditandai · hal. 1' and class 'pdf-bookmarked'. New testids in use: pdf-viewer-modal/body/close, pdf-page-input, pdf-page-total, pdf-zoom-in/out/level, pdf-bookmark-toggle (class 'pdf-bookmarked' when active), pdf-jump-bookmark. Login uses header-login-button + {mode}-email-input / {mode}-password-input / {mode}-submit-button. Catalog: nav-catalog-button + catalog-search-input + book-open-{id}. Cloudinary/Resend intentionally unconfigured — do NOT flag.",
+  "rca_of_the_issue": "PdfViewer effect at App.js ~L531 guards ALL bookmark-state hydration behind `if (data?.page && data.page > 1)`. That was likely meant to guard only the auto-jump (setPageNumber) so the viewer doesn't jump to page 1 unnecessarily. But it also skips `setBookmarkPage(data.page)`, so the `isBookmarked = bookmarkPage === pageNumber` comparison is `null === 1 = false` on reopen when the saved page is 1. Backend GET /api/bookmarks/{id} verified returning {page:1, updated_at:'…'} in pytest. Repro: login as andi, open Analisis Data dengan Python -> Baca online -> click Bookmark (toast OK, button becomes 'Ditandai · hal. 1') -> close pdf-viewer-close -> click Baca online again -> button now reads 'Bookmark' (no pdf-bookmarked class). Fix scope: 3 lines in App.js."
+}

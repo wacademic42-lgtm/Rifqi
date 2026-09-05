@@ -206,6 +206,10 @@ class ResetPasswordIn(BaseModel):
     new_password: str = Field(min_length=6)
 
 
+class BookmarkIn(BaseModel):
+    page: int = Field(ge=1, le=100000)
+
+
 # ---------------------------------------------------------------------------
 # Auth endpoints
 # ---------------------------------------------------------------------------
@@ -690,6 +694,34 @@ async def stats(_: dict = Depends(require_admin)):
 
 
 # ---------------------------------------------------------------------------
+# Bookmarks (last-read page per user+book)
+# ---------------------------------------------------------------------------
+@api.get("/bookmarks/{book_id}")
+async def get_bookmark(book_id: str, user: dict = Depends(get_current_user)):
+    try:
+        oid = ObjectId(book_id)
+    except Exception:
+        raise HTTPException(404, "Buku tidak ditemukan")
+    doc = await db.bookmarks.find_one({"user_id": user["_id"], "book_id": oid})
+    return {"page": doc.get("page", 1) if doc else 1, "updated_at": doc.get("updated_at").isoformat() if doc and doc.get("updated_at") else None}
+
+
+@api.put("/bookmarks/{book_id}")
+async def set_bookmark(book_id: str, body: BookmarkIn, user: dict = Depends(get_current_user)):
+    try:
+        oid = ObjectId(book_id)
+    except Exception:
+        raise HTTPException(404, "Buku tidak ditemukan")
+    now = datetime.now(timezone.utc)
+    await db.bookmarks.update_one(
+        {"user_id": user["_id"], "book_id": oid},
+        {"$set": {"page": body.page, "updated_at": now}, "$setOnInsert": {"created_at": now}},
+        upsert=True,
+    )
+    return {"ok": True, "page": body.page}
+
+
+# ---------------------------------------------------------------------------
 # Cloudinary signature (optional — only if configured)
 # ---------------------------------------------------------------------------
 @api.get("/cloudinary/signature")
@@ -772,6 +804,7 @@ async def seed_data():
     await db.reservations.create_index([("book_id", 1), ("status", 1), ("requested_at", 1)])
     await db.password_reset_tokens.create_index("token", unique=True)
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
+    await db.bookmarks.create_index([("user_id", 1), ("book_id", 1)], unique=True)
 
     # Seed admin
     admin_email = os.environ["ADMIN_EMAIL"].lower()

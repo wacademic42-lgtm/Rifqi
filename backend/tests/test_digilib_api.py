@@ -311,6 +311,79 @@ def test_reset_password_invalid_token():
     assert "tidak valid" in r.json().get("detail", "")
 
 
+# ---------- Bookmarks ----------
+def _python_book_id():
+    r = requests.get(f"{API}/books", params={"q": "Python"})
+    hits = [b for b in r.json() if "Analisis Data dengan Python" in b["title"]]
+    assert hits, "Expected Python book"
+    return hits[0]["id"]
+
+
+def test_bookmark_requires_auth():
+    bid = _python_book_id()
+    r = requests.get(f"{API}/bookmarks/{bid}")
+    assert r.status_code == 401
+    r2 = requests.put(f"{API}/bookmarks/{bid}", json={"page": 3})
+    assert r2.status_code == 401
+
+
+def test_bookmark_get_before_set_returns_default(member_client):
+    # use a throwaway book so there is definitely no doc yet
+    # login as a NEW user to avoid conflict
+    s = _session()
+    email = f"bm_{uuid.uuid4().hex[:8]}@digilib.ac.id"
+    reg = s.post(f"{API}/auth/register", json={"name": "BM User", "email": email, "password": "pass1234"})
+    assert reg.status_code == 200
+    bid = _python_book_id()
+    r = s.get(f"{API}/bookmarks/{bid}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body == {"page": 1, "updated_at": None}
+    s.post(f"{API}/auth/logout")
+
+
+def test_bookmark_put_then_get_persists(member_client):
+    bid = _python_book_id()
+    r = member_client.put(f"{API}/bookmarks/{bid}", json={"page": 5})
+    assert r.status_code == 200, r.text
+    assert r.json()["page"] == 5
+    g = member_client.get(f"{API}/bookmarks/{bid}")
+    assert g.status_code == 200
+    body = g.json()
+    assert body["page"] == 5
+    assert body["updated_at"] is not None
+    # cleanup: reset to 1
+    member_client.put(f"{API}/bookmarks/{bid}", json={"page": 1})
+
+
+def test_bookmark_invalid_page(member_client):
+    bid = _python_book_id()
+    r = member_client.put(f"{API}/bookmarks/{bid}", json={"page": 0})
+    assert r.status_code == 422
+    r2 = member_client.put(f"{API}/bookmarks/{bid}", json={"page": -5})
+    assert r2.status_code == 422
+
+
+def test_bookmark_invalid_book_id(member_client):
+    r = member_client.put(f"{API}/bookmarks/not_a_valid_object_id", json={"page": 2})
+    assert r.status_code == 404
+    r2 = member_client.get(f"{API}/bookmarks/not_a_valid_object_id")
+    assert r2.status_code == 404
+
+
+def test_bookmark_isolated_between_users(admin_client, member_client):
+    bid = _python_book_id()
+    member_client.put(f"{API}/bookmarks/{bid}", json={"page": 7})
+    admin_client.put(f"{API}/bookmarks/{bid}", json={"page": 12})
+    m = member_client.get(f"{API}/bookmarks/{bid}").json()
+    a = admin_client.get(f"{API}/bookmarks/{bid}").json()
+    assert m["page"] == 7
+    assert a["page"] == 12
+    # cleanup
+    member_client.put(f"{API}/bookmarks/{bid}", json={"page": 1})
+    admin_client.put(f"{API}/bookmarks/{bid}", json={"page": 1})
+
+
 # ---------- Cloudinary signature ----------
 def test_cloudinary_signature_missing_config(admin_client):
     r = admin_client.get(f"{API}/cloudinary/signature")

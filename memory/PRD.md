@@ -33,6 +33,19 @@ Bangun e-perpustakaan seperti https://digilib.unesa.ac.id/front. User awalnya mi
 - Seed: admin, demo member, 15 buku
 - **Testing**: 18/18 pytest pass, 100% Playwright pass
 
+### Iteration 3 (Jan 2026)
+- **PDF viewer canggih (react-pdf 10.5)**: 
+  - Zoom in/out (50–300%) dengan label persentase
+  - Navigasi halaman: prev/next + input jump-to-page
+  - Bookmark otomatis: halaman terakhir dibaca disimpan per user + per buku (debounced 800ms), hanya trigger setelah user navigasi (bukan on-load)
+  - Tombol "Bookmark" manual dengan indikator visual (badge orange "Ditandai · hal. X") + toast konfirmasi
+  - Tombol "Lanjut dari halaman X" di footer saat user sedang tidak di halaman bookmark
+  - Fallback "Buka di tab baru" untuk PDF host yang tidak CORS-friendly
+  - Anonim: tombol bookmark diarahkan ke login prompt (tidak crash)
+- **Backend bookmark endpoints**:
+  - GET/PUT `/api/bookmarks/{book_id}` — upsert, unique index `(user_id, book_id)`, validasi `page: 1..100000`
+- **Testing**: 28/28 pytest pass, frontend reopen-bookmark bug fixed & re-verified
+
 ### Iteration 2 (Jan 2026)
 - **Cloudinary integration**: signature endpoint (image + raw/pdf), BookEditor upload buttons, graceful fallback ke input URL manual saat keys belum disetel
 - **Password reset flow**:

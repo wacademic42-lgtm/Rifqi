@@ -51,6 +51,10 @@ export const api = {
   // Cloudinary
   cloudinarySignature: (resource_type = "image", folder = "digilib/covers") =>
     client.get("/cloudinary/signature", { params: { resource_type, folder } }).then((r) => r.data),
+
+  // Bookmarks
+  getBookmark: (bookId) => client.get(`/bookmarks/${bookId}`).then((r) => r.data),
+  setBookmark: (bookId, page) => client.put(`/bookmarks/${bookId}`, { page }).then((r) => r.data),
 };
 
 export default api;

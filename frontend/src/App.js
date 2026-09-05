@@ -1,12 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@/App.css";
 import "@/responsive.css";
+import "@/pdf-viewer.css";
+import { Document, Page, pdfjs } from "react-pdf";
+import "react-pdf/dist/Page/AnnotationLayer.css";
+import "react-pdf/dist/Page/TextLayer.css";
 import {
   BookOpen, CalendarDays, ChevronRight, CircleUserRound, Clock3, FileText, Grid2X2,
   LogIn, Menu, Search, ShieldCheck, Sparkles, Users, X, Trash2, Pencil, PlusCircle,
-  Upload, Eye, KeyRound,
+  Upload, Eye, KeyRound, ZoomIn, ZoomOut, ChevronLeft, Bookmark, BookmarkCheck,
 } from "lucide-react";
 import api, { formatError } from "@/lib/api";
+
+// PDF.js worker (matches installed pdfjs-dist version)
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
 
 const CATEGORY_OPTIONS = ["Semua kategori", "Pendidikan", "Metodologi", "Teknologi", "Sains", "Literasi", "Sosial"];
 const initials = (name = "") => name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase() || "AN";
@@ -174,7 +182,7 @@ function App() {
         loggedIn={!!user}
       />}
 
-      {pdfBook && <PdfViewer book={pdfBook} onClose={() => setPdfBook(null)} />}
+      {pdfBook && <PdfViewer book={pdfBook} user={user} notify={notify} onClose={() => setPdfBook(null)} />}
 
       {showAuth && <AuthModal
         mode={authMode} setMode={setAuthMode}
@@ -507,38 +515,164 @@ function BookDetail({ book, onClose, onBorrow, onRead, loggedIn }) {
   );
 }
 
-function PdfViewer({ book, onClose }) {
-  const gviewUrl = `https://docs.google.com/gview?url=${encodeURIComponent(book.pdf_url)}&embedded=true`;
+function PdfViewer({ book, user, notify, onClose }) {
+  const [numPages, setNumPages] = useState(null);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [scale, setScale] = useState(1.1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [bookmarkPage, setBookmarkPage] = useState(null);
+  const [jumpValue, setJumpValue] = useState("1");
+  const containerRef = useRef(null);
+  const saveTimer = useRef(null);
+  const hasNavigated = useRef(false);
+  const isBookmarked = bookmarkPage === pageNumber;
+
+  // Load user's saved bookmark once
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await api.getBookmark(book.id);
+        if (cancelled) return;
+        if (data?.page) {
+          setBookmarkPage(data.page);
+          if (data.page > 1) {
+            setPageNumber(data.page);
+            setJumpValue(String(data.page));
+          }
+        }
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [book.id, user]);
+
+  // Auto-save last-read page (debounced) — only when logged in AND user has navigated
+  useEffect(() => {
+    if (!user || !numPages) return;
+    if (!hasNavigated.current) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      api.setBookmark(book.id, pageNumber).catch(() => {});
+    }, 800);
+    return () => saveTimer.current && clearTimeout(saveTimer.current);
+  }, [pageNumber, book.id, user, numPages]);
+
+  const onDocLoad = ({ numPages: n }) => { setNumPages(n); setLoading(false); };
+  const onDocErr = (e) => { setError(e?.message || "Gagal memuat PDF"); setLoading(false); };
+
+  const goto = (n) => {
+    const p = Math.max(1, Math.min(numPages || 1, n));
+    if (p !== pageNumber) hasNavigated.current = true;
+    setPageNumber(p);
+    setJumpValue(String(p));
+    if (containerRef.current) containerRef.current.scrollTop = 0;
+  };
+
+  const toggleBookmark = async () => {
+    if (!user) { notify("Masuk untuk menyimpan bookmark", "info"); return; }
+    try {
+      await api.setBookmark(book.id, pageNumber);
+      setBookmarkPage(pageNumber);
+      notify(`Bookmark disimpan di halaman ${pageNumber}`, "success");
+    } catch (e) { notify(formatError(e), "error"); }
+  };
+
   return (
-    <div className="modal-backdrop" data-testid="pdf-viewer-modal" style={{ padding: 0 }}>
-      <div style={{
-        background: "#fff", width: "min(1100px, 95vw)", height: "92vh",
-        borderRadius: 8, display: "flex", flexDirection: "column", overflow: "hidden",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid var(--line)" }}>
-          <div>
-            <strong style={{ fontSize: 14 }}>{book.title}</strong>
-            <span style={{ fontSize: 11, color: "var(--muted)", display: "block", marginTop: 3 }}>{book.author} · {book.type}</span>
+    <div className="modal-backdrop pdf-modal" data-testid="pdf-viewer-modal">
+      <div className="pdf-shell">
+        {/* Toolbar */}
+        <div className="pdf-toolbar">
+          <div className="pdf-title">
+            <strong>{book.title}</strong>
+            <span>{book.author} · {book.type}</span>
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <a
-              href={book.pdf_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              data-testid="pdf-open-new-tab"
-              style={{ fontSize: 11, color: "var(--blue)", textDecoration: "none", padding: "8px 12px", border: "1px solid var(--blue)", borderRadius: 4 }}
-            >Buka di tab baru</a>
-            <button data-testid="pdf-viewer-close" onClick={onClose} style={{ border: 0, background: "none", cursor: "pointer", color: "var(--muted)" }}>
-              <X />
+
+          <div className="pdf-controls">
+            <button data-testid="pdf-prev" onClick={() => goto(pageNumber - 1)} disabled={pageNumber <= 1} title="Halaman sebelumnya">
+              <ChevronLeft size={16} />
+            </button>
+            <form onSubmit={(e) => { e.preventDefault(); goto(parseInt(jumpValue, 10) || 1); }} className="pdf-page-jump">
+              <input
+                data-testid="pdf-page-input"
+                value={jumpValue}
+                onChange={(e) => setJumpValue(e.target.value.replace(/[^0-9]/g, ""))}
+                aria-label="Halaman"
+              />
+              <span data-testid="pdf-page-total">/ {numPages ?? "…"}</span>
+            </form>
+            <button data-testid="pdf-next" onClick={() => goto(pageNumber + 1)} disabled={!numPages || pageNumber >= numPages} title="Halaman berikutnya">
+              <ChevronRight size={16} />
+            </button>
+
+            <span className="pdf-sep" />
+
+            <button data-testid="pdf-zoom-out" onClick={() => setScale((s) => Math.max(0.5, +(s - 0.15).toFixed(2)))} title="Perkecil">
+              <ZoomOut size={16} />
+            </button>
+            <span className="pdf-zoom-label" data-testid="pdf-zoom-level">{Math.round(scale * 100)}%</span>
+            <button data-testid="pdf-zoom-in" onClick={() => setScale((s) => Math.min(3, +(s + 0.15).toFixed(2)))} title="Perbesar">
+              <ZoomIn size={16} />
+            </button>
+
+            <span className="pdf-sep" />
+
+            <button
+              data-testid="pdf-bookmark-toggle"
+              onClick={toggleBookmark}
+              className={isBookmarked ? "pdf-bookmarked" : ""}
+              title={isBookmarked ? `Bookmark di halaman ${bookmarkPage}` : "Simpan bookmark"}
+            >
+              {isBookmarked ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
+              <span>{isBookmarked ? `Ditandai · hal. ${bookmarkPage}` : "Bookmark"}</span>
             </button>
           </div>
+
+          <div className="pdf-actions">
+            <a href={book.pdf_url} target="_blank" rel="noopener noreferrer" data-testid="pdf-open-new-tab">Buka di tab baru</a>
+            <button data-testid="pdf-viewer-close" onClick={onClose} className="pdf-close-btn"><X size={18} /></button>
+          </div>
         </div>
-        <iframe
-          data-testid="pdf-viewer-iframe"
-          src={gviewUrl}
-          title={book.title}
-          style={{ flex: 1, border: 0, width: "100%" }}
-        />
+
+        {/* Body */}
+        <div className="pdf-body" ref={containerRef} data-testid="pdf-viewer-body">
+          {error ? (
+            <div className="pdf-error" data-testid="pdf-viewer-error">
+              <strong>Tidak dapat memuat PDF.</strong>
+              <span>{error}</span>
+              <a href={book.pdf_url} target="_blank" rel="noopener noreferrer">Buka di tab baru</a>
+            </div>
+          ) : (
+            <Document
+              file={book.pdf_url}
+              onLoadSuccess={onDocLoad}
+              onLoadError={onDocErr}
+              loading={<div className="pdf-loading" data-testid="pdf-loading">Memuat dokumen...</div>}
+            >
+              <Page
+                pageNumber={pageNumber}
+                scale={scale}
+                renderTextLayer
+                renderAnnotationLayer
+                loading={<div className="pdf-loading">Memuat halaman...</div>}
+                data-testid="pdf-page"
+              />
+            </Document>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="pdf-footer">
+          <span data-testid="pdf-status">
+            {loading ? "Memuat..." : numPages ? `Halaman ${pageNumber} dari ${numPages}` : ""}
+          </span>
+          {user && bookmarkPage && !isBookmarked && (
+            <button className="pdf-jump-bookmark" data-testid="pdf-jump-bookmark" onClick={() => goto(bookmarkPage)}>
+              <BookmarkCheck size={13} /> Lanjut dari halaman {bookmarkPage}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
