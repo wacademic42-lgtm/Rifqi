@@ -1,0 +1,27 @@
+{
+  "summary": "Iteration 8 — Tested new GET /api/books/{id}/related endpoint and BookDetail related-section UI. Added 5 new pytest tests to test_digilib_api.py; all 33 tests pass (28 regression + 5 new = 100%). Frontend flow verified end-to-end: related-section renders on modal open, source book is never in its own recs, clicking a related card swaps the modal and re-fetches recommendations, reasons match spec patterns (Sering dipinjam bersama / {Category} · {Type} / Kategori {Category} / Sesuai riwayat bacaan Anda / Pilihan pustakawan). Anonymous and authenticated (andi) both work; andi with prior loan history correctly surfaces 'Sesuai riwayat bacaan Anda' on multiple cards. No bugs found in this iteration.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_digilib_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py related_books auth section (L432-450): manual JWT decoding is duplicated from the auth dependency. Consider extracting `optional_current_user(request)` helper to avoid drift with the primary auth middleware (e.g., cookie name, algorithm changes).",
+    "related_books excludes ALL of the caller's historical loans from exclude_ids (line 449-450 iterates every loan doc regardless of status/returned_at). Per spec only ACTIVELY loaned books should be excluded; currently a returned loan also excludes that book from future recommendations. Consider filtering `{'user_id': caller['_id'], 'returned_at': None}` (or by status).",
+    "server.py now ~991 lines — still monolithic. Consider splitting into routers/books.py, routers/loans.py, routers/related.py.",
+    "Featured-fallback branch (L507) only fires when scored < limit — good — but the returned list is not re-truncated after adding fallbacks; the final sort+slice at L519 handles it. Confirmed OK.",
+    "Related endpoint has no rate limiting / caching — every modal open triggers ~4 mongo queries + 1 aggregate. Acceptable for MVP; consider Redis or in-memory LRU for prod."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_digilib_api.py (appended 5 tests: anon+default-limit, limit=3-cap, invalid-id 404 (both malformed and well-formed-but-unknown), actively-loaned-exclusion, history-based personalization reason)"
+  ],
+  "success_rate": {"backend": "100% (33/33)", "frontend": "100% — all listed scenarios verified"},
+  "test_credentials": "Admin: admin@digilib.ac.id/admin123. Member: andi@digilib.ac.id/member123 — restored to member123 by reset-password teardown.",
+  "seed_data_creation": "No leftover TEST_ data — all admin-created test books deleted in finally blocks; test loans returned before book cleanup.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Related-books feature (iteration 4/8) is fully working on both backend and frontend. Endpoint: GET /api/books/{id}/related?limit=N. Testids: related-section, related-loading, related-empty, related-book-{id}, related-reason-{id}. Note the observation that returned/inactive loans are also excluded from recommendations — flag if spec is strict, otherwise acceptable behavior. Auth flow, book CRUD, loans, reservations, password reset, bookmarks all still pass.",
+  "rca_of_the_issue": "N/A — no bugs in this iteration."
+}

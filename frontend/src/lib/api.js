@@ -25,6 +25,7 @@ export const api = {
   // Books
   listBooks: (params = {}) => client.get("/books", { params }).then((r) => r.data),
   getBook: (id) => client.get(`/books/${id}`).then((r) => r.data),
+  relatedBooks: (id, limit = 6) => client.get(`/books/${id}/related`, { params: { limit } }).then((r) => r.data),
   categories: () => client.get("/books/categories").then((r) => r.data),
   createBook: (body) => client.post("/books", body).then((r) => r.data),
   updateBook: (id, body) => client.patch(`/books/${id}`, body).then((r) => r.data),

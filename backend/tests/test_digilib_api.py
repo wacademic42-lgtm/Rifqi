@@ -394,3 +394,114 @@ def test_cloudinary_signature_missing_config(admin_client):
 def test_cloudinary_signature_forbidden_for_member(member_client):
     r = member_client.get(f"{API}/cloudinary/signature")
     assert r.status_code == 403
+
+
+# ---------- Related books (iteration 8) ----------
+VALID_REASONS_PREFIX = ("Sering dipinjam bersama", "Kategori ", "Sesuai riwayat bacaan Anda", "Pilihan pustakawan")
+
+
+def _first_book():
+    r = requests.get(f"{API}/books")
+    assert r.status_code == 200
+    return r.json()[0]
+
+
+def test_related_anonymous_default_limit():
+    src = _first_book()
+    r = requests.get(f"{API}/books/{src['id']}/related")
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert isinstance(data, list)
+    assert len(data) <= 6
+    for b in data:
+        assert b["id"] != src["id"], "Source book must not be included"
+        assert isinstance(b.get("reason"), str) and b["reason"]
+        # reason must match one of the known Indonesian patterns
+        assert (
+            b["reason"].startswith(VALID_REASONS_PREFIX)
+            or " · " in b["reason"]  # "{Category} · {Type}"
+        ), f"Unexpected reason string: {b['reason']}"
+
+
+def test_related_limit_param_caps_results():
+    src = _first_book()
+    r = requests.get(f"{API}/books/{src['id']}/related", params={"limit": 3})
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) <= 3
+
+
+def test_related_invalid_id_returns_404():
+    r = requests.get(f"{API}/books/nonexistent_bad_id/related")
+    assert r.status_code == 404
+    # also a well-formed but unknown ObjectId
+    r2 = requests.get(f"{API}/books/507f1f77bcf86cd799439011/related")
+    assert r2.status_code == 404
+
+
+def test_related_excludes_actively_loaned(member_client, admin_client):
+    # Create two books in same category so one becomes a natural recommendation for the other
+    payload1 = {"title": "TEST Rel Src", "author": "T", "type": "Buku",
+                "category": "Pendidikan", "year": "2025", "stock": 1, "featured": False}
+    payload2 = {"title": "TEST Rel Target", "author": "T", "type": "Buku",
+                "category": "Pendidikan", "year": "2025", "stock": 1, "featured": False}
+    b1 = admin_client.post(f"{API}/books", json=payload1).json()
+    b2 = admin_client.post(f"{API}/books", json=payload2).json()
+    try:
+        # Before loaning, target b2 should appear in related list for b1 (same category+type)
+        r_before = member_client.get(f"{API}/books/{b1['id']}/related", params={"limit": 20})
+        assert r_before.status_code == 200
+        ids_before = {x["id"] for x in r_before.json()}
+        assert b2["id"] in ids_before, "Expected same-category book in related before loan"
+
+        # Now member borrows b2 -> should be excluded
+        br = member_client.post(f"{API}/loans/borrow/{b2['id']}")
+        assert br.status_code == 200
+        loan_id = br.json()["loan"]["id"]
+        try:
+            r_after = member_client.get(f"{API}/books/{b1['id']}/related", params={"limit": 20})
+            assert r_after.status_code == 200
+            ids_after = {x["id"] for x in r_after.json()}
+            assert b2["id"] not in ids_after, "Actively loaned book should be excluded"
+        finally:
+            member_client.post(f"{API}/loans/{loan_id}/return")
+    finally:
+        admin_client.delete(f"{API}/books/{b1['id']}")
+        admin_client.delete(f"{API}/books/{b2['id']}")
+
+
+def test_related_reason_history_for_authenticated_user(member_client, admin_client):
+    """After member has loan history in category X, opening a different book should surface
+    'Sesuai riwayat bacaan Anda' for other books in category X."""
+    # Create two Pendidikan books to build loan history, and one 'source' book in a different category
+    src = admin_client.post(f"{API}/books", json={
+        "title": "TEST Rel Source Fiksi", "author": "T", "type": "Buku",
+        "category": "Fiksi", "year": "2025", "stock": 1
+    }).json()
+    hist_book = admin_client.post(f"{API}/books", json={
+        "title": "TEST History Pendidikan", "author": "T", "type": "Buku",
+        "category": "Pendidikan", "year": "2025", "stock": 1
+    }).json()
+    other_pend = admin_client.post(f"{API}/books", json={
+        "title": "TEST Other Pendidikan", "author": "T", "type": "Buku",
+        "category": "Pendidikan", "year": "2025", "stock": 1
+    }).json()
+    try:
+        # Build history: borrow + return hist_book so it's in loan history but not active
+        br = member_client.post(f"{API}/loans/borrow/{hist_book['id']}")
+        assert br.status_code == 200
+        loan_id = br.json()["loan"]["id"]
+        ret = member_client.post(f"{API}/loans/{loan_id}/return")
+        assert ret.status_code == 200
+
+        # Now request related for src (Fiksi) — other_pend (Pendidikan) should surface with history reason
+        r = member_client.get(f"{API}/books/{src['id']}/related", params={"limit": 20})
+        assert r.status_code == 200
+        results = r.json()
+        match = next((x for x in results if x["id"] == other_pend["id"]), None)
+        assert match is not None, f"Expected other_pend in results, got ids={[x['id'] for x in results]}"
+        assert match["reason"] == "Sesuai riwayat bacaan Anda", f"Got reason={match['reason']}"
+    finally:
+        admin_client.delete(f"{API}/books/{src['id']}")
+        admin_client.delete(f"{API}/books/{hist_book['id']}")
+        admin_client.delete(f"{API}/books/{other_pend['id']}")

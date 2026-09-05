@@ -410,6 +410,126 @@ async def list_categories():
     return sorted(cats)
 
 
+@api.get("/books/{book_id}/related")
+async def related_books(book_id: str, limit: int = 6, request: Request = None):
+    """Return related books for the detail modal.
+    Strategy (weighted, deduped):
+      1) Books borrowed by users who also borrowed this book (excl. same book).
+      2) Books sharing category + type.
+      3) Books sharing only category.
+      4) Featured fallback.
+    If caller is authenticated, prefer books matching their loan history categories.
+    Excludes the source book and books already actively loaned by the caller.
+    """
+    try:
+        oid = ObjectId(book_id)
+    except Exception:
+        raise HTTPException(404, "Buku tidak ditemukan")
+    source = await db.books.find_one({"_id": oid})
+    if not source:
+        raise HTTPException(404, "Buku tidak ditemukan")
+
+    # Optional: identify caller if a valid access cookie is present (silently ignore errors)
+    caller: Optional[dict] = None
+    exclude_ids: set = {oid}
+    if request is not None:
+        token = request.cookies.get("access_token")
+        if not token:
+            auth = request.headers.get("Authorization", "")
+            if auth.startswith("Bearer "):
+                token = auth[7:]
+        if token:
+            try:
+                payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
+                if payload.get("type") == "access":
+                    caller = await db.users.find_one({"_id": ObjectId(payload["sub"])})
+            except Exception:
+                caller = None
+    if caller:
+        my_loans = await db.loans.find({"user_id": caller["_id"]}, {"book_id": 1}).to_list(200)
+        exclude_ids.update(l["book_id"] for l in my_loans)
+
+    scored: dict = {}  # book_id -> {"score": int, "reason": str}
+
+    # 1) Co-borrow signal: users who borrowed this book -> other books they borrowed
+    co_users = await db.loans.find({"book_id": oid}, {"user_id": 1}).to_list(500)
+    co_user_ids = list({l["user_id"] for l in co_users})
+    if co_user_ids:
+        co_loans = await db.loans.find(
+            {"user_id": {"$in": co_user_ids}, "book_id": {"$ne": oid}},
+            {"book_id": 1},
+        ).to_list(2000)
+        for cl in co_loans:
+            bid = cl["book_id"]
+            if bid in exclude_ids:
+                continue
+            entry = scored.setdefault(bid, {"score": 0, "reason": "Sering dipinjam bersama"})
+            entry["score"] += 5
+
+    # 2) Same category + same type
+    same_ct = await db.books.find(
+        {"_id": {"$nin": list(exclude_ids)}, "category": source["category"], "type": source.get("type", "Buku")},
+    ).to_list(limit * 3)
+    for b in same_ct:
+        entry = scored.setdefault(b["_id"], {"score": 0, "reason": f"{b['category']} · {b.get('type','Buku')}"})
+        entry["score"] += 3
+
+    # 3) Same category only
+    same_c = await db.books.find(
+        {"_id": {"$nin": list(exclude_ids)}, "category": source["category"]},
+    ).to_list(limit * 3)
+    for b in same_c:
+        entry = scored.setdefault(b["_id"], {"score": 0, "reason": f"Kategori {b['category']}"})
+        entry["score"] += 2
+
+    # 4) Personalized: caller loan history categories
+    if caller:
+        hist_cats = await db.loans.aggregate([
+            {"$match": {"user_id": caller["_id"]}},
+            {"$lookup": {"from": "books", "localField": "book_id", "foreignField": "_id", "as": "b"}},
+            {"$unwind": "$b"},
+            {"$group": {"_id": "$b.category", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}},
+            {"$limit": 3},
+        ]).to_list(3)
+        top_cats = [h["_id"] for h in hist_cats]
+        if top_cats:
+            hist_books = await db.books.find(
+                {"_id": {"$nin": list(exclude_ids)}, "category": {"$in": top_cats}},
+            ).to_list(limit * 3)
+            for b in hist_books:
+                entry = scored.setdefault(b["_id"], {"score": 0, "reason": "Sesuai riwayat bacaan Anda"})
+                entry["score"] += 4
+                if entry["reason"] not in ("Sering dipinjam bersama",):
+                    entry["reason"] = "Sesuai riwayat bacaan Anda"
+
+    # 5) Featured fallback
+    if len(scored) < limit:
+        featured = await db.books.find(
+            {"_id": {"$nin": list(exclude_ids)}, "featured": True},
+        ).to_list(limit)
+        for b in featured:
+            scored.setdefault(b["_id"], {"score": 0, "reason": "Pilihan pustakawan"})
+            scored[b["_id"]]["score"] += 1
+
+    if not scored:
+        return []
+
+    # Fetch selected book docs & attach reason
+    ranked = sorted(scored.items(), key=lambda kv: -kv[1]["score"])[:limit]
+    ids = [bid for bid, _ in ranked]
+    docs = {b["_id"]: b for b in await db.books.find({"_id": {"$in": ids}}).to_list(limit)}
+    out = []
+    for bid, meta in ranked:
+        b = docs.get(bid)
+        if not b:
+            continue
+        item = serialize_book(b)
+        item["reason"] = meta["reason"]
+        out.append(item)
+    return out
+
+
 @api.get("/books/{book_id}")
 async def get_book(book_id: str):
     try:

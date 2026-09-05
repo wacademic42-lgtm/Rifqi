@@ -179,6 +179,7 @@ function App() {
         onClose={() => setSelected(null)}
         onBorrow={() => handleBorrow(selected)}
         onRead={() => { setPdfBook(selected); setSelected(null); }}
+        onOpenRelated={(b) => setSelected(b)}
         loggedIn={!!user}
       />}
 
@@ -474,42 +475,92 @@ function BookCard({ book, onOpen }) {
   );
 }
 
-function BookDetail({ book, onClose, onBorrow, onRead, loggedIn }) {
+function BookDetail({ book, onClose, onBorrow, onRead, onOpenRelated, loggedIn }) {
   const hasPdf = !!book.pdf_url;
+  const [related, setRelated] = useState([]);
+  const [loadingRelated, setLoadingRelated] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingRelated(true);
+    api.relatedBooks(book.id, 6)
+      .then((r) => { if (!cancelled) setRelated(r); })
+      .catch(() => { if (!cancelled) setRelated([]); })
+      .finally(() => { if (!cancelled) setLoadingRelated(false); });
+    return () => { cancelled = true; };
+  }, [book.id]);
+
   return (
     <div className="modal-backdrop" data-testid="book-detail-modal">
-      <div className="detail-modal">
+      <div className="detail-modal detail-modal-wide">
         <button className="modal-close" data-testid="book-detail-close-button" onClick={onClose}><X /></button>
-        <img className="detail-cover" src={book.cover_url} alt={`Sampul ${book.title}`} />
-        <div className="detail-copy">
-          <span className="book-category">{book.category} · {book.type}</span>
-          <h2>{book.title}</h2>
-          <p className="detail-author">Oleh {book.author}</p>
-          <div className="detail-meta">
-            <span><CalendarDays size={16} /> Terbit {book.year}</span>
-            <span><FileText size={16} /> Bahasa Indonesia</span>
-            <span className={book.stock ? "available" : "unavailable"}>
-              {book.stock ? `${book.stock} stok tersedia` : "Stok habis"}
-            </span>
-          </div>
-          <p className="abstract">{book.description || "Buku ini menghadirkan pembahasan terstruktur dan kontekstual untuk mendukung proses belajar, penelitian, dan pengembangan wawasan pembaca."}</p>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button className="primary-button" data-testid="borrow-book-button" onClick={onBorrow}>
-              {book.stock === 0 ? "Masuk antrean reservasi" : loggedIn ? "Pinjam koleksi" : "Masuk untuk meminjam"}
-              <ChevronRight size={17} />
-            </button>
-            {hasPdf && (
-              <button
-                className="primary-button"
-                data-testid="read-online-button"
-                onClick={onRead}
-                style={{ background: "#fff", color: "var(--blue)", border: "1px solid var(--blue)" }}
-              >
-                <Eye size={16} /> Baca online
+        <div className="detail-top">
+          <img className="detail-cover" src={book.cover_url} alt={`Sampul ${book.title}`} />
+          <div className="detail-copy">
+            <span className="book-category">{book.category} · {book.type}</span>
+            <h2>{book.title}</h2>
+            <p className="detail-author">Oleh {book.author}</p>
+            <div className="detail-meta">
+              <span><CalendarDays size={16} /> Terbit {book.year}</span>
+              <span><FileText size={16} /> Bahasa Indonesia</span>
+              <span className={book.stock ? "available" : "unavailable"}>
+                {book.stock ? `${book.stock} stok tersedia` : "Stok habis"}
+              </span>
+            </div>
+            <p className="abstract">{book.description || "Buku ini menghadirkan pembahasan terstruktur dan kontekstual untuk mendukung proses belajar, penelitian, dan pengembangan wawasan pembaca."}</p>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button className="primary-button" data-testid="borrow-book-button" onClick={onBorrow}>
+                {book.stock === 0 ? "Masuk antrean reservasi" : loggedIn ? "Pinjam koleksi" : "Masuk untuk meminjam"}
+                <ChevronRight size={17} />
               </button>
-            )}
+              {hasPdf && (
+                <button
+                  className="primary-button"
+                  data-testid="read-online-button"
+                  onClick={onRead}
+                  style={{ background: "#fff", color: "var(--blue)", border: "1px solid var(--blue)" }}
+                >
+                  <Eye size={16} /> Baca online
+                </button>
+              )}
+            </div>
           </div>
         </div>
+
+        <section className="related-section" data-testid="related-section">
+          <div className="related-heading">
+            <div>
+              <span className="section-kicker">KOLEKSI TERKAIT</span>
+              <h3>Rekomendasi untuk Anda</h3>
+            </div>
+          </div>
+          {loadingRelated ? (
+            <div className="related-loading" data-testid="related-loading">Memuat rekomendasi...</div>
+          ) : related.length === 0 ? (
+            <div className="related-empty" data-testid="related-empty">Belum ada rekomendasi untuk buku ini.</div>
+          ) : (
+            <div className="related-grid">
+              {related.map((r) => (
+                <button
+                  key={r.id}
+                  className="related-card"
+                  data-testid={`related-book-${r.id}`}
+                  onClick={() => onOpenRelated(r)}
+                >
+                  <img src={r.cover_url} alt="" onError={(e) => { e.currentTarget.style.opacity = 0.35; }} />
+                  <div className="related-body">
+                    <span className="related-reason" data-testid={`related-reason-${r.id}`}>{r.reason}</span>
+                    <strong>{r.title}</strong>
+                    <span className="related-author">{r.author}</span>
+                    <span className={`related-stock ${r.stock ? "available" : "unavailable"}`}>
+                      {r.stock ? `${r.stock} tersedia` : "Stok habis"}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

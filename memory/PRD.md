@@ -33,6 +33,19 @@ Bangun e-perpustakaan seperti https://digilib.unesa.ac.id/front. User awalnya mi
 - Seed: admin, demo member, 15 buku
 - **Testing**: 18/18 pytest pass, 100% Playwright pass
 
+### Iteration 4 (Jan 2026)
+- **Rekomendasi Baca**: bagian "Koleksi terkait / Rekomendasi untuk Anda" di modal detail buku
+  - Backend `GET /api/books/{id}/related?limit=N` dengan strategi berbobot:
+    - Co-borrow signal (users yang pinjam buku ini juga pinjam apa) — score 5
+    - Sesuai riwayat kategori user (personalized) — score 4
+    - Kategori + tipe sama — score 3
+    - Kategori sama — score 2
+    - Pilihan pustakawan sebagai fallback — score 1
+  - Setiap rekomendasi disertai `reason` bilingual-ready
+  - Kartu klikabel → modal swap ke buku terpilih dengan rekomendasi baru
+  - Anonim & authenticated berjalan; buku yang sudah dipinjam user di-exclude
+- **Testing**: 33/33 pytest pass · frontend flow verified
+
 ### Iteration 3 (Jan 2026)
 - **PDF viewer canggih (react-pdf 10.5)**: 
   - Zoom in/out (50–300%) dengan label persentase
