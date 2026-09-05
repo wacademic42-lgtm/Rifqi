@@ -126,8 +126,8 @@ function App() {
     <div className="app-shell">
       <header className="topbar"><div className="topbar-inner">
         <button className="brand" data-testid="site-brand-button" onClick={() => navigate("home")}>
-          <span className="brand-mark"><BookOpen size={20} /></span>
-          <span><strong>DigiLib</strong><small>PERPUSTAKAAN DIGITAL</small></span>
+          <img className="brand-logo" src="/logo-uiz.jpg" alt="Logo Universitas Islam Al Azhar Gresik" />
+          <span><strong>DigiLib UIZ</strong><small>UNIVERSITAS ISLAM AL AZHAR GRESIK</small></span>
         </button>
         <button className="mobile-menu" data-testid="mobile-menu-button" onClick={() => setMobileNav(!mobileNav)}>
           {mobileNav ? <X /> : <Menu />}
@@ -169,9 +169,9 @@ function App() {
       {page === "admin" && isAdmin && <AdminPanel notify={notify} />}
 
       <footer>
-        <div className="footer-brand"><span className="brand-mark"><BookOpen size={18} /></span><strong>DigiLib</strong></div>
-        <span>Perpustakaan digital modern — dibangun di atas Emergent</span>
-        <span>© 2026 DigiLib</span>
+        <div className="footer-brand"><img className="brand-logo footer-logo" src="/logo-uiz.jpg" alt="Logo UIZ" /><strong>DigiLib UIZ</strong></div>
+        <span>Perpustakaan Digital Universitas Islam Al Azhar Gresik</span>
+        <span>© 2026 DigiLib UIZ</span>
       </footer>
 
       {selected && <BookDetail
@@ -276,7 +276,7 @@ function CatalogPage({ books, loading, query, setQuery, category, setCategory, o
           <h1>Jelajahi pengetahuan</h1>
           <p>Temukan koleksi yang relevan dengan kebutuhanmu.</p>
         </div>
-        <div className="sync-status" data-testid="sync-status"><span></span> Tersinkron dari database DigiLib</div>
+        <div className="sync-status" data-testid="sync-status"><span></span> Tersinkron dari database DigiLib UIZ</div>
       </div>
       <div className="catalog-toolbar">
         <div className="catalog-search">
@@ -776,7 +776,7 @@ function AuthModal({ mode, setMode, resetToken, onClose, onSuccess, notify }) {
 
   const titles = {
     login: ["AKSES ANGGOTA", "Selamat datang kembali", "Masuk untuk meminjam koleksi dan mengelola aktivitas bacaan."],
-    register: ["DAFTAR ANGGOTA", "Bergabung dengan DigiLib", "Buat akun untuk mulai meminjam koleksi digital."],
+    register: ["DAFTAR ANGGOTA", "Bergabung dengan DigiLib UIZ", "Buat akun untuk mulai meminjam koleksi digital."],
     forgot: ["LUPA KATA SANDI", "Reset kata sandi", "Masukkan email Anda. Kami akan mengirim tautan reset (berlaku 1 jam)."],
     reset: ["KATA SANDI BARU", "Buat kata sandi baru", "Silakan pilih kata sandi baru untuk akun Anda."],
   };
@@ -831,7 +831,7 @@ function AuthModal({ mode, setMode, resetToken, onClose, onSuccess, notify }) {
         )}
 
         <button className="primary-button full" data-testid={`${mode}-submit-button`} disabled={busy} onClick={submit}>
-          {busy ? "Memproses..." : mode === "login" ? "Masuk ke DigiLib"
+          {busy ? "Memproses..." : mode === "login" ? "Masuk ke DigiLib UIZ"
             : mode === "register" ? "Buat akun & masuk"
             : mode === "forgot" ? "Kirim tautan reset"
             : "Simpan kata sandi baru"}
